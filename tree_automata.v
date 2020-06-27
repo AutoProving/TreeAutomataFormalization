@@ -48,6 +48,14 @@ Variable r : nat.
 
 Definition parent (p : seq [r]) : seq [r] := drop 1 p.
 
+Lemma parent_cons (p : seq [r]) (j : [r]) : parent (j :: p) = p.
+Proof. by rewrite /parent /= drop0. Qed.
+Hint Resolve parent_cons : core.
+
+Lemma parent_nil : parent [::] = [::].
+Proof. by []. Qed.
+Hint Resolve parent_nil : core.
+
 (*   We define sufix_closed instead of prefix_closed because it is trivial     *)
 (* ie, takes constant time) to drop the first element of a string but not the  *)
 (* last. Thus throughout this development our strings are the reversed version *)
@@ -60,14 +68,24 @@ Lemma suffix_closedP (U : seq (seq [r])) :
     (forall (p : seq [r]) (j : [r]), j :: p \in U -> p \in U)
     (suffix_closed U).
 Proof.
+  rewrite /suffix_closed.
   apply: (iffP idP).
-Admitted.
+    move=> /allP scU p j.
+    rewrite -{2}(parent_cons p j).
+    by apply: scU.
+  move=> H; apply /allP; case => [// | j p].
+  by rewrite parent_cons; apply: H.
+Qed.
 
 Lemma suffix_closed_correct (U : seq (seq [r])) (p : seq [r]) (n : nat) :
   suffix_closed U -> p \in U -> drop n p \in U.
 Proof.
-  elim: n.
-Admitted.
+  move=> /allP scU; move: p; elim: n => [p | n IH].
+    by rewrite drop0.
+  case => [// | j p jpinU].
+  rewrite drop_cons; apply: IH.
+  by rewrite -(parent_cons p j); apply: scU.
+Qed.
 
 Lemma suffix_closed_nil (U : seq (seq [r])) :
   suffix_closed U -> U != [::] -> [::] \in U.
@@ -122,9 +140,25 @@ Proof.
   by apply: suffix_closed_correct.
 Qed.
 
-(* TODO descendants *)
-(* TODO leaves *)
-(* TODO all_leaves *)
+Definition children  (U : seq (seq [r])) (p : seq [r]) : seq (seq [r]) :=
+  [seq s <- U | is_parent p s].
+
+Definition possible_children (p : seq [r]) : seq (seq [r]) :=
+  [seq j :: p | j <- enum [r]].
+
+Definition children_from_possible (U : seq (seq [r])) (p : seq [r])
+  : seq (seq [r]) :=
+  [seq s <- possible_children p | s \in U].
+
+Lemma childrenE (U : seq (seq [r])) : children U =1 children_from_possible U.
+Proof.
+Admitted.
+
+Definition descendants (U : seq (seq [r])) (p : seq [r]) : seq (seq [r]) :=
+  [seq s <- U | p \in ancestors s].
+
+Definition leaves (U : seq (seq [r])) : seq (seq [r]) :=
+  [seq s <- U | descendants U s == [:: s]].
 
 (* TODO maybe the empty S should also be connected *)
 Definition connected (S : seq (seq [r])) : bool :=
