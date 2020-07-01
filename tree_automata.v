@@ -125,7 +125,8 @@ Definition well_numbered (U : seq string) : bool :=
 
 Lemma well_numberedP (U : seq string) :
   reflect
-    (forall (p : string) (j : nat), j :: p \in U -> forall (k: nat), k <= j -> k :: p \in U)
+    (forall (p : string) (j : nat),
+        j :: p \in U -> forall (k: nat), k <= j -> k :: p \in U)
     (well_numbered U).
 Proof.
   apply: (iffP idP).
@@ -154,7 +155,7 @@ Definition is_parent (p q : string) : bool := parent p == q.
 Definition is_child (p q : string) : bool := is_parent q p.
 
 Definition is_ancestor (p q : string) : bool :=
-  p == drop (size p - size q) q.
+  p == drop (size q - size p) q.
 
 Lemma is_ancestorpp p : is_ancestor p p.
 Proof.
@@ -162,7 +163,7 @@ Proof.
 Qed.
 
 Definition ancestors (s : string) : seq string :=
-  [seq drop i s | i <- iota 0 (size s)].
+  [seq drop i s | i <- iota 0 (size s).+1].
 
 Lemma suffix_closed_ancestors (U : seq string) (p : string) :
   suffix_closed U -> p \in U -> all (mem U) (ancestors p).
@@ -174,22 +175,27 @@ Qed.
 
 Lemma is_ancestor_ancestors (p q : string) :
   is_ancestor p q -> p \in ancestors q.
-Proof. Admitted.
+Proof.
+  rewrite /is_ancestor /ancestors => /eqP ancp.
+  rewrite ancp.
+  suff : (size q - size p) \in (iota 0 (size q).+1) by apply: map_f.
+  by rewrite mem_iota add0n ltnS leq_subr.
+Qed.
 
 Definition is_strict_ancestor (p q : string) : bool :=
-  let d := (size p - size q) in
+  let d := (size q - size p) in
   (d != 0) && (p == drop d q).
 
 Lemma is_strict_ancestorW (p q : string) :
   is_strict_ancestor p q -> is_ancestor p q.
-Proof. Admitted.
+Proof. by move=> /andP []. Qed.
 
 Lemma self_ancestor (s : string) : s \in ancestors s.
 Proof.
   rewrite /ancestors.
   set f := drop^~ s; have -> : s = f 0 by rewrite /f drop0.
-  apply: map_f.
-Admitted.
+  by apply: map_f; rewrite mem_iota.
+Qed.
 
 Definition children  (U : seq string) (p : string) : seq string :=
   [seq s <- U | is_parent p s].
