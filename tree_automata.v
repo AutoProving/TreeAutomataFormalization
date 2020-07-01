@@ -1,5 +1,5 @@
 Set Warnings "-notation-overridden".
-From mathcomp Require Import all_ssreflect (*all_algebra order*).
+From mathcomp Require Import all_ssreflect.
 Set Warnings "+notation-overridden".
 
 Set Implicit Arguments.
@@ -12,27 +12,39 @@ Unset Printing Implicit Defensive.
 (*                                                                             *)
 (*                                                                             *)
 (*   Here are short descriptions of currently implemented functionality.       *)
-(*   Let (r : nat), (j : [r]), (p, q, s : seq [r]), and (U, S : seq (seq [r])).*)
+(*   Let (r j k : nat), (p, q, s : string), and (U, S : seq string).           *)
 (*                                                                             *)
-(*            [n] == the natural numbers smaller than n (aka the ordinal n)    *)
-(*        seq [n] == the type of finite strings (sequences) over [n]           *)
-(*  seq (seq [n]) == the type of collections of finite strings over [n]        *)
-(*           [::] == the empty string (sequence)                               *)
-(*         j :: p == a string corresponding to prepending the number j to the  *)
-(*                   string p                                                  *)
+(*                                 DATATYPES                                   *)
+(*              nat == the natural numbers                                     *)
+(*              [r] == the natural numbers smaller than r (aka the ordinal r)  *)
+(*           string == the type of finite strings (sequences) over the natural *)
+(*                     numbers                                                 *)
+(*       seq string == the type of lists of finite strings over nat            *)
+(*             [::] == the empty list (or string depending on its type)        *)
+(*           j :: p == a string corresponding to prepending the number j to    *)
+(*                     the string p                                            *)
 (* [:: j1; ...; jn] == the string with the elements j1 to jn                   *)
-(*       parent p == the string p without the first element                    *)
-(* suffix_closed U == every sufix of an element of U is also an element of U   *)
-(* well_numbered_single U (j :: p) == all the children of p with id smaller    *)
-(*                                    than j are in U                          *)
-(* well_numbered U == all the strings p in U are well_numbered_single U p      *)
 (*                                                                             *)
-(*     tree_like U == both suffix_closed and well_numbered                     *)
-(*   is_parent p q == p is the parent of q                                     *)
-(*    is_child p q == p is a child of q                                        *)
-(*     ancestors p == the parent of p, and the parent of the parent of p, and  *)
-(*                    so on                                                    *)
-(*     connected S == there is only one string in S without its parent in S    *)
+(*                              SUFFIX-CLOSED                                  *)
+(*         parent p == the string p without the first element, or [::] if p is *)
+(*                     empty                                                   *)
+(*  suffix_closed U == every sufix of an element of U is also an element of U  *)
+(*  well_numbered U == if (j :: p) is in U, then for every k <= j, the string  *)
+(*                     (k :: p) is also in U                                   *)
+(*                                                                             *)
+(*                                TREE-LIKE                                    *)
+(*      tree_like U == suffix-closed, well-numbered and without duplicates     *)
+(*    is_parent p q == p is the parent (i.e. the first suffix) of q            *)
+(*     is_child p q == q is the parent of p                                    *)
+(*  is_ancestor p q == p is a suffix of q                                      *)
+(*      ancestors p == every suffix of p                                       *)
+(* is_strict_ancestor p q == p is a suffix of q, but p is not q                *)
+(*     children U p == a list of all the children of p in U                    *)
+(*  descendants U p == a list of all the children of p, and the children of the*)
+(*                     children, and so on, as long as they are in U           *)
+(*      is_leaf U p == there are no descendants of p in U                      *)
+(*         leaves U == a list of all the leaves of U                           *)
+(*      connected S == there is only one string in S without its parent in S   *)
 
 
 
@@ -41,14 +53,21 @@ Unset Printing Implicit Defensive.
 (* between 0 and n-1, or in other words, the natural numbers i such that i < n.*)
 Notation "[ n ]" := 'I_n (at level 0).
 
+(*   There is an implicit coercion nat_of_ord : [n] -> nat that allows         *)
+(* functions on nat to seamleslly recieve inputs of type [n].                  *)
 
-Section SuffixClosed.
+(*   For now we define everything over the natural numbers instad of [n]       *)
+(* because it is better to compute with "raw" data types, i.e. datatypes       *)
+(* without proofs. As soon as this restriction is necessary we can add it and  *)
+(* make use of the coersion from nat to [n] to use the following definitions.  *)
 
-Variable r : nat.
 
-Definition parent (p : seq [r]) : seq [r] := drop 1 p.
+(*   We use lists of natural numbers to represent strings. *)
+Definition string := seq nat.
 
-Lemma parent_cons (p : seq [r]) (j : [r]) : parent (j :: p) = p.
+Definition parent (p : string) : string := drop 1 p.
+
+Lemma parent_cons (p : string) (j : nat) : parent (j :: p) = p.
 Proof. by rewrite /parent /= drop0. Qed.
 Hint Resolve parent_cons : core.
 
@@ -57,15 +76,15 @@ Proof. by []. Qed.
 Hint Resolve parent_nil : core.
 
 (*   We define sufix_closed instead of prefix_closed because it is trivial     *)
-(* ie, takes constant time) to drop the first element of a string but not the  *)
+(* (ie, takes constant time) to drop the first element of a string but not the *)
 (* last. Thus throughout this development our strings are the reversed version *)
 (* of what appears in the paper specification.                                 *)
-Definition suffix_closed (U : seq (seq [r])) : bool :=
+Definition suffix_closed (U : seq string) : bool :=
   all (fun s => parent s \in U) U.
 
-Lemma suffix_closedP (U : seq (seq [r])) :
+Lemma suffix_closedP (U : seq string) :
   reflect
-    (forall (p : seq [r]) (j : [r]), j :: p \in U -> p \in U)
+    (forall (p : string) (j : nat), j :: p \in U -> p \in U)
     (suffix_closed U).
 Proof.
   rewrite /suffix_closed.
@@ -77,7 +96,7 @@ Proof.
   by rewrite parent_cons; apply: H.
 Qed.
 
-Lemma suffix_closed_correct (U : seq (seq [r])) (p : seq [r]) (n : nat) :
+Lemma suffix_closed_correct (U : seq string) (p : string) (n : nat) :
   suffix_closed U -> p \in U -> drop n p \in U.
 Proof.
   move=> /allP scU; move: p; elim: n => [p | n IH].
@@ -87,7 +106,7 @@ Proof.
   by rewrite -(parent_cons p j); apply: scU.
 Qed.
 
-Lemma suffix_closed_nil (U : seq (seq [r])) :
+Lemma suffix_closed_nil (U : seq string) :
   suffix_closed U -> U != [::] -> [::] \in U.
 Proof.
   case: U => [// | s U closedsU _].
@@ -95,44 +114,57 @@ Proof.
   by apply: suffix_closed_correct => //; rewrite in_cons eqxx.
 Qed.
 
-(* TODO This doesn't look like the most efficient implementation, because it verifies every i in [r] instead of directly in [j]. This is because I didn't figure out the coersion, I'll think about it later. *)
-Definition well_numbered_single (U : seq (seq [r])) (s : seq [r]) : bool :=
+Definition well_numbered_single (U : seq string) (s : string) : bool :=
   match s with
   | [::] => true
-  | j :: p => [forall i in [r], (i < j) ==> (i :: p \in U)]
+  | j :: p => j.-1 :: p \in U
   end.
 
-Definition well_numbered (U : seq (seq [r])) : bool :=
+Definition well_numbered (U : seq string) : bool :=
   all (well_numbered_single U) U.
 
-End SuffixClosed.
+Lemma well_numberedP (U : seq string) :
+  reflect
+    (forall (p : string) (j : nat), j :: p \in U -> forall (k: nat), k <= j -> k :: p \in U)
+    (well_numbered U).
+Proof.
+  apply: (iffP idP).
+    move=> /allP; rewrite /well_numbered_single => wnU p j jpinU k kleqj.
+    set i := (j - k).
+    have: (k = j - i) by rewrite /i subKn.
+    move=> ->.
+    elim: i => [| n IH].
+      by rewrite subn0.
+    rewrite subnS.
+    by apply: wnU _ IH.
+  move=> H.
+  apply /allP => p.
+  case: p =>// a l alinU.
+  by apply: (H _ a) => //; apply: leq_pred.
+ Qed.
 
 
-Section TreeLike.
-
-Variable r : nat.
-
-Definition tree_like (U : seq (seq [r])) : bool :=
-  suffix_closed U && well_numbered U.
+Definition tree_like (U : seq string) : bool :=
+  suffix_closed U && well_numbered U && uniq U.
 
 (* p is a parent of q *)
-Definition is_parent (p q : seq [r]) : bool := parent p == q.
+Definition is_parent (p q : string) : bool := parent p == q.
 
 (* p is a child of q *)
-Definition is_child (p q : seq [r]) : bool := is_parent q p.
+Definition is_child (p q : string) : bool := is_parent q p.
 
-(* TODO Should the empty string be an ancestor? I guess so. *)
-Definition ancestors (s : seq [r]) : seq (seq [r]) :=
-  [seq drop i s | i <- iota 0 (size s).+1].
+Definition is_ancestor (p q : string) : bool :=
+  p == drop (size p - size q) q.
 
-Lemma self_ancestor (s : seq [r]) : s \in ancestors s.
+Lemma is_ancestorpp p : is_ancestor p p.
 Proof.
-  rewrite /ancestors.
-  set f := drop^~ s; have -> : s = f 0 by rewrite /f drop0.
-  by apply: map_f.
+  by rewrite /is_ancestor subnn drop0.
 Qed.
 
-Lemma suffix_closed_ancestors (U : seq (seq [r])) (p : seq [r]) :
+Definition ancestors (s : string) : seq string :=
+  [seq drop i s | i <- iota 0 (size s)].
+
+Lemma suffix_closed_ancestors (U : seq string) (p : string) :
   suffix_closed U -> p \in U -> all (mem U) (ancestors p).
 Proof.
   move=> scU pinU; rewrite /ancestors.
@@ -140,35 +172,42 @@ Proof.
   by apply: suffix_closed_correct.
 Qed.
 
-Definition children  (U : seq (seq [r])) (p : seq [r]) : seq (seq [r]) :=
-  [seq s <- U | is_parent p s].
+Lemma is_ancestor_ancestors (p q : string) :
+  is_ancestor p q -> p \in ancestors q.
+Proof. Admitted.
 
-Definition possible_children (p : seq [r]) : seq (seq [r]) :=
-  [seq j :: p | j <- enum [r]].
+Definition is_strict_ancestor (p q : string) : bool :=
+  let d := (size p - size q) in
+  (d != 0) && (p == drop d q).
 
-Definition children_from_possible (U : seq (seq [r])) (p : seq [r])
-  : seq (seq [r]) :=
-  [seq s <- possible_children p | s \in U].
+Lemma is_strict_ancestorW (p q : string) :
+  is_strict_ancestor p q -> is_ancestor p q.
+Proof. Admitted.
 
-Lemma childrenE (U : seq (seq [r])) : children U =1 children_from_possible U.
+Lemma self_ancestor (s : string) : s \in ancestors s.
 Proof.
+  rewrite /ancestors.
+  set f := drop^~ s; have -> : s = f 0 by rewrite /f drop0.
+  apply: map_f.
 Admitted.
 
-Definition descendants (U : seq (seq [r])) (p : seq [r]) : seq (seq [r]) :=
-  [seq s <- U | p \in ancestors s].
+Definition children  (U : seq string) (p : string) : seq string :=
+  [seq s <- U | is_parent p s].
 
-Definition leaves (U : seq (seq [r])) : seq (seq [r]) :=
-  [seq s <- U | descendants U s == [:: s]].
+Definition descendants (U : seq string) (p : string) : seq string :=
+  [seq s <- U | is_ancestor p s].
+
+Definition is_leaf (U : seq string) (s : string) :=
+  all (fun p => ~~ (is_strict_ancestor s p)) U.
+
+Definition leaves (U : seq string) : seq string :=
+  [seq s <- U | is_leaf U s].
 
 (* TODO maybe the empty S should also be connected *)
-Definition connected (S : seq (seq [r])) : bool :=
-  count (fun p => (p == [::]) || ((p != [::]) && (parent p \notin S))) S == 1.
+Definition connected (S : seq string) : bool :=
+  count (fun p => (p == [::]) || (parent p \notin S)) S == 1.
 
-End TreeLike.
-
-
-(* Examples and tests *)
-Notation "'z" := (@Ordinal 2 0 isT) (at level 0).
-Notation "'o" := (@Ordinal 2 1 isT) (at level 0).
-Eval cbv in well_numbered [:: [:: 'z]]. (* why? :( *)
-Eval cbv in map (fun x => map val x) (ancestors [:: 'o; 'z; 'o]).
+Lemma connected_correct (S : seq string) (p : string) :
+  (p == [::]) || (parent p \notin S) =
+  (p == [::]) || (p != [::]) && (parent p \notin S).
+Proof. by case: p. Qed.
