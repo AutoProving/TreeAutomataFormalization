@@ -229,3 +229,65 @@ Lemma connected_correct (S : prototree) (p : string) :
   (p == [::]) || (parent p \notin S) =
   (p == [::]) || (p != [::]) && (parent p \notin S).
 Proof. by case: p. Qed.
+
+
+Section Terms.
+
+Variable r : nat.
+Variable X : finType.
+
+Definition terms := bstring r -> X.
+
+Definition default_term (a : X) : terms :=
+  fun (s : string) => a.
+
+Definition build_term (a : X) (ts : seq terms) : terms :=
+  fun (s : string) =>
+    match rev s with
+    | [::] => a
+    | j :: p => (nth (default_term a) ts j) p
+    end.
+
+End Terms.
+
+Definition tfst {X Y Z : Type} (d : X * Y * Z) :=
+  match d with (a, b, c) => a end.
+Notation "d ~1" := (tfst d) (at level 2).
+
+Definition tscd {X Y Z : Type} (d : X * Y * Z) :=
+  match d with (a, b, c) => b end.
+Notation "d ~2" := (tscd d) (at level 2).
+
+Definition thrd {X Y Z : Type} (d : X * Y * Z) :=
+  match d with (a, b, c) => c end.
+Notation "d ~3" := (thrd d) (at level 2).
+
+Section TreeAutomata.
+
+Variable X : finType.
+Variable states : finType.
+
+Record bu_tree_automata := mk_bu_tree_automata {
+  final_states : seq states;
+  transitions : seq (seq states * X * states);
+}.
+
+Definition automata_size (A : bu_tree_automata) : nat :=
+  #|states| + size (transitions A).
+
+(*
+Definition L (A : bu_tree_automata) (q : states) (i : nat) : seq (terms X) :=
+  match i with
+  | 0 => [::]
+  | 1 => filter (fun d => (d~1 == [::]) && (d~3 == q)) (transitions A)
+  | _ => [::]
+  end.
+*)
+
+(*
+  match (transitions A) with
+  | [::] => [::]
+  | ([::], a, q) :: tl => [::]
+  | (q1 :: qs, a, q) :: tl => [::]
+  end.
+*)
