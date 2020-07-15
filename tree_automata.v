@@ -12,14 +12,14 @@ Unset Printing Implicit Defensive.
 (*                                                                             *)
 (*                                                                             *)
 (*   Here are short descriptions of currently implemented functionality.       *)
-(*   Let (r j k : nat), (p, q, s : string), and (U, S : seq string).           *)
+(*   Let (r j k : nat), (p, q, s : string), and (U, S : prototree).           *)
 (*                                                                             *)
 (*                                 DATATYPES                                   *)
 (*              nat == the natural numbers                                     *)
 (*              [r] == the natural numbers smaller than r (aka the ordinal r)  *)
 (*           string == the type of finite strings (sequences) over the natural *)
 (*                     numbers                                                 *)
-(*       seq string == the type of lists of finite strings over nat            *)
+(*       prototree == the type of lists of finite strings over nat            *)
 (*             [::] == the empty list (or string depending on its type)        *)
 (*           j :: p == a string corresponding to prepending the number j to    *)
 (*                     the string p                                            *)
@@ -49,21 +49,33 @@ Unset Printing Implicit Defensive.
 
 
 
-(*   Unlike in the paper specification, here [n] is the finite set of numbers  *)
-(* between 0 and n-1, or in other words, the natural numbers i such that i < n.*)
-Notation "[ n ]" := 'I_n (at level 0).
+(*   Unlike in the paper specification, here [r] is the finite set of numbers  *)
+(* between 0 and r-1, or in other words, the natural numbers i such that i < r.*)
+Notation "[ r ]" := 'I_r (at level 0).
 
-(*   There is an implicit coercion nat_of_ord : [n] -> nat that allows         *)
-(* functions on nat to seamleslly recieve inputs of type [n].                  *)
+(*   There is an implicit coercion nat_of_ord : [r] -> nat that allows         *)
+(* functions on nat to seamleslly recieve inputs of type [r].                  *)
 
-(*   For now we define everything over the natural numbers instad of [n]       *)
+(*   For now we define everything over the natural numbers instad of [r]       *)
 (* because it is better to compute with "raw" data types, i.e. datatypes       *)
 (* without proofs. As soon as this restriction is necessary we can add it and  *)
-(* make use of the coersion from nat to [n] to use the following definitions.  *)
+(* make use of the coersion from nat to [r] to use the following definitions.  *)
 
 
-(*   We use lists of natural numbers to represent strings. *)
+(*   We use lists of natural numbers to represent strings.                     *)
 Definition string := seq nat.
+
+Definition bstring (r : nat) := seq [r].
+Notation "[ r *]" := (bstring r) (at level 0).
+
+Coercion string_of_bstring (r : nat) : [r*] -> string := map val.
+
+Definition prototree := seq string.
+
+Definition bprototree (r : nat) := seq [r*].
+
+Coercion prototree_of_bprototree (r : nat) : bprototree r -> prototree :=
+  map (@string_of_bstring r).
 
 Definition parent (p : string) : string := drop 1 p.
 
@@ -79,10 +91,10 @@ Hint Resolve parent_nil : core.
 (* (ie, takes constant time) to drop the first element of a string but not the *)
 (* last. Thus throughout this development our strings are the reversed version *)
 (* of what appears in the paper specification.                                 *)
-Definition suffix_closed (U : seq string) : bool :=
+Definition suffix_closed (U : prototree) : bool :=
   all (fun s => parent s \in U) U.
 
-Lemma suffix_closedP (U : seq string) :
+Lemma suffix_closedP (U : prototree) :
   reflect
     (forall (p : string) (j : nat), j :: p \in U -> p \in U)
     (suffix_closed U).
@@ -96,7 +108,7 @@ Proof.
   by rewrite parent_cons; apply: H.
 Qed.
 
-Lemma suffix_closed_correct (U : seq string) (p : string) (n : nat) :
+Lemma suffix_closed_correct (U : prototree) (p : string) (n : nat) :
   suffix_closed U -> p \in U -> drop n p \in U.
 Proof.
   move=> /allP scU; move: p; elim: n => [p | n IH].
@@ -106,7 +118,7 @@ Proof.
   by rewrite -(parent_cons p j); apply: scU.
 Qed.
 
-Lemma suffix_closed_nil (U : seq string) :
+Lemma suffix_closed_nil (U : prototree) :
   suffix_closed U -> U != [::] -> [::] \in U.
 Proof.
   case: U => [// | s U closedsU _].
@@ -114,16 +126,16 @@ Proof.
   by apply: suffix_closed_correct => //; rewrite in_cons eqxx.
 Qed.
 
-Definition well_numbered_single (U : seq string) (s : string) : bool :=
+Definition well_numbered_single (U : prototree) (s : string) : bool :=
   match s with
   | [::] => true
   | j :: p => j.-1 :: p \in U
   end.
 
-Definition well_numbered (U : seq string) : bool :=
+Definition well_numbered (U : prototree) : bool :=
   all (well_numbered_single U) U.
 
-Lemma well_numberedP (U : seq string) :
+Lemma well_numberedP (U : prototree) :
   reflect
     (forall (p : string) (j : nat),
         j :: p \in U -> forall (k: nat), k <= j -> k :: p \in U)
@@ -145,7 +157,7 @@ Proof.
  Qed.
 
 
-Definition tree_like (U : seq string) : bool :=
+Definition tree_like (r : nat) (U : bprototree r) : bool :=
   suffix_closed U && well_numbered U && uniq U.
 
 (* p is a parent of q *)
@@ -165,7 +177,7 @@ Qed.
 Definition ancestors (s : string) : seq string :=
   [seq drop i s | i <- iota 0 (size s).+1].
 
-Lemma suffix_closed_ancestors (U : seq string) (p : string) :
+Lemma suffix_closed_ancestors (U : prototree) (p : string) :
   suffix_closed U -> p \in U -> all (mem U) (ancestors p).
 Proof.
   move=> scU pinU; rewrite /ancestors.
@@ -197,23 +209,23 @@ Proof.
   by apply: map_f; rewrite mem_iota.
 Qed.
 
-Definition children  (U : seq string) (p : string) : seq string :=
+Definition children  (U : prototree) (p : string) : seq string :=
   [seq s <- U | is_parent p s].
 
-Definition descendants (U : seq string) (p : string) : seq string :=
+Definition descendants (U : prototree) (p : string) : seq string :=
   [seq s <- U | is_ancestor p s].
 
-Definition is_leaf (U : seq string) (s : string) :=
+Definition is_leaf (U : prototree) (s : string) :=
   all (fun p => ~~ (is_strict_ancestor s p)) U.
 
-Definition leaves (U : seq string) : seq string :=
+Definition leaves (U : prototree) : seq string :=
   [seq s <- U | is_leaf U s].
 
 (* TODO maybe the empty S should also be connected *)
-Definition connected (S : seq string) : bool :=
+Definition connected (S : prototree) : bool :=
   count (fun p => (p == [::]) || (parent p \notin S)) S == 1.
 
-Lemma connected_correct (S : seq string) (p : string) :
+Lemma connected_correct (S : prototree) (p : string) :
   (p == [::]) || (parent p \notin S) =
   (p == [::]) || (p != [::]) && (parent p \notin S).
 Proof. by case: p. Qed.
