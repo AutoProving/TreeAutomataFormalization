@@ -246,14 +246,47 @@ Lemma connected_correct (S : prototree) (p : string) :
 Proof. by case: p. Qed.
 
 
+Require Import Logic.FunctionalExtensionality.
 Section Terms.
 
 Variable r : nat.
 Variable X : finType.
+Variable d : X.
+
+Record term := Term {
+  pos : bprototree r;
+  assignment_of_term :> [r*] -> X;
+}.
+
+Definition term_code (t : term) : seq ([r*] * X) :=
+  zip (pos t) (map t (pos t)).
+
+Definition term_decode (AX : seq ([r*] * X)) : term :=
+  Term (unzip1 AX) (fun s => nth d (unzip2 AX) (index s (unzip1 AX))).
 
 
-Definition prototerm : Type := [r*] -> X.
+Lemma term_codeK : cancel term_code term_decode.
+Proof.
+  move=> [A t].
+  rewrite /term_code /term_decode /=.
+  congr Term.
+    by rewrite unzip1_zip ?size_map.
+  rewrite unzip1_zip ?size_map // unzip2_zip ?size_map //.
+  apply: functional_extensionality => s.
+  elim: A.
+    rewrite /=.
+    (* FIXME this is false as it stands *)
+Admitted.
 
+Definition term_eqMixin := CanEqMixin term_codeK.
+Canonical term_eqType := EqType term term_eqMixin.
+
+
+
+
+
+
+(*
 Definition build_term (a : X) (ts : r.-tuple prototerm) : prototerm := fun s =>
   match rev s with
   | [::] => a
@@ -283,7 +316,7 @@ Fail Definition this_term_reaches_this_state_at_this_depth
   | 1 => ([::], t, q) \in (transitions A)
   | _ => false
   end.
-
+*)
 End Terms.
 (*
 Definition tfst {X Y Z : Type} (d : X * Y * Z) :=
