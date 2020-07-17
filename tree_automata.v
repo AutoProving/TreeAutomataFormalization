@@ -1,36 +1,43 @@
 Set Warnings "-notation-overridden".
 From mathcomp Require Import all_ssreflect.
-Set Warnings "+notation-overridden".
+Set Warnings "notation-overridden".
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
 
 (*   This library is heavily based upon the mathcomp.ssreflect.seq library:    *)
 (*     https://math-comp.github.io/htmldoc/mathcomp.ssreflect.seq.html         *)
 (*                                                                             *)
 (*                                                                             *)
 (*   Here are short descriptions of currently implemented functionality.       *)
-(*   Let (r j k : nat), (p, q, s : string), and (U, S : prototree).           *)
+(*   Let (r j k : nat), (p, q, s : string), (A : prototree), and               *)
+(* (U : bprototree r)                                                          *)
 (*                                                                             *)
 (*                                 DATATYPES                                   *)
 (*              nat == the natural numbers                                     *)
 (*              [r] == the natural numbers smaller than r (aka the ordinal r)  *)
 (*           string == the type of finite strings (sequences) over the natural *)
 (*                     numbers                                                 *)
-(*       prototree == the type of lists of finite strings over nat            *)
+(*             [r*] == the type of finite strings over [r]                     *)
+(*        prototree == the type of lists of finite strings over nat            *)
+(*     bprototree r == the type of lists of [r*]                               *)
 (*             [::] == the empty list (or string depending on its type)        *)
 (*           j :: p == a string corresponding to prepending the number j to    *)
 (*                     the string p                                            *)
 (* [:: j1; ...; jn] == the string with the elements j1 to jn                   *)
 (*                                                                             *)
+(*   The following coercions are available:                                    *)
+(*   - From [r] to nat                                                         *)
+(*   - From [r*] to string                                                     *)
+(*   - From bprototree r to prototree                                          *)
+(*                                                                             *)
 (*                              SUFFIX-CLOSED                                  *)
 (*         parent p == the string p without the first element, or [::] if p is *)
 (*                     empty                                                   *)
-(*  suffix_closed U == every sufix of an element of U is also an element of U  *)
-(*  well_numbered U == if (j :: p) is in U, then for every k <= j, the string  *)
-(*                     (k :: p) is also in U                                   *)
+(*  suffix_closed A == every sufix of an element of A is also an element of A  *)
+(*  well_numbered A == if (j :: p) is in A, then for every k <= j, the string  *)
+(*                     (k :: p) is also in A                                   *)
 (*                                                                             *)
 (*                                TREE-LIKE                                    *)
 (*      tree_like U == suffix-closed, well-numbered and without duplicates     *)
@@ -39,12 +46,12 @@ Unset Printing Implicit Defensive.
 (*  is_ancestor p q == p is a suffix of q                                      *)
 (*      ancestors p == every suffix of p                                       *)
 (* is_strict_ancestor p q == p is a suffix of q, but p is not q                *)
-(*     children U p == a list of all the children of p in U                    *)
-(*  descendants U p == a list of all the children of p, and the children of the*)
-(*                     children, and so on, as long as they are in U           *)
-(*      is_leaf U p == there are no descendants of p in U                      *)
-(*         leaves U == a list of all the leaves of U                           *)
-(*      connected S == there is only one string in S without its parent in S   *)
+(*     children A p == a list of all the children of p in A                    *)
+(*  descendants A p == a list of all the children of p, and the children of the*)
+(*                     children, and so on, as long as they are in A           *)
+(*      is_leaf A p == there are no descendants of p in A                      *)
+(*         leaves A == a list of all the leaves of A                           *)
+(*      connected A == there is only one string in A without its parent in A   *)
 
 
 
@@ -59,12 +66,15 @@ Notation "[ r ]" := 'I_r (at level 0).
 (*   For now we define everything over the natural numbers instad of [r]       *)
 (* because it is better to compute with "raw" data types, i.e. datatypes       *)
 (* without proofs. As soon as this restriction is necessary we can add it and  *)
-(* make use of the coersion from nat to [r] to use the following definitions.  *)
+(* make use of the coercion from [r] to nat to use the following definitions.  *)
 
 
 (*   We use lists of natural numbers to represent strings.                     *)
 Definition string := seq nat.
 
+(* ... and lists of elements of [r] to represent bounded strings, or [r*]      *)
+(*   We use the notation [r*] instead of [r]* because there could be parsing   *)
+(* mistakes by parsing [r]* as the already existing notation [r] followed by *.*)
 Definition bstring (r : nat) := seq [r].
 Notation "[ r *]" := (bstring r) (at level 0).
 
@@ -158,7 +168,12 @@ Proof.
 
 
 Definition tree_like (r : nat) (U : bprototree r) : bool :=
-  suffix_closed U && well_numbered U && uniq U.
+  [&& suffix_closed U, well_numbered U & uniq U].
+
+Record tree (r : nat) := Tree {
+  bprototree_of_tree :> bprototree r;
+  _ : tree_like bprototree_of_tree
+}.
 
 (* p is a parent of q *)
 Definition is_parent (p q : string) : bool := parent p == q.
@@ -236,20 +251,41 @@ Section Terms.
 Variable r : nat.
 Variable X : finType.
 
-Definition terms := bstring r -> X.
 
-Definition default_term (a : X) : terms :=
-  fun (s : string) => a.
+Definition prototerm : Type := [r*] -> X.
 
-Definition build_term (a : X) (ts : seq terms) : terms :=
-  fun (s : string) =>
-    match rev s with
-    | [::] => a
-    | j :: p => (nth (default_term a) ts j) p
-    end.
+Definition build_term (a : X) (ts : r.-tuple prototerm) : prototerm := fun s =>
+  match rev s with
+  | [::] => a
+  | j :: p => (tnth ts j) (rev p)
+  end.
+
+(* TODO (well-defined) term *)
+(* TODO domain of a term Pos(t) *)
+(* TODO some lemma about how terms are well-defined from well-defined terms *)
+
+Variable state : finType.
+
+Record buta := mkButa {
+  final_states : seq state;
+  transitions : seq (seq state * X * state);
+}.
+
+Definition tasize (A : buta) : nat :=
+  #|state| + size (transitions A).
+
+(* This is not even the correct definition, but most importantly, prototerms *)
+(* prototerms are not an eqType yet... *)
+Fail Definition this_term_reaches_this_state_at_this_depth
+    (A : buta) (q : state) (i : nat) (t : prototerm) : bool :=
+  match i with
+  | 0 => false
+  | 1 => ([::], t, q) \in (transitions A)
+  | _ => false
+  end.
 
 End Terms.
-
+(*
 Definition tfst {X Y Z : Type} (d : X * Y * Z) :=
   match d with (a, b, c) => a end.
 Notation "d ~1" := (tfst d) (at level 2).
@@ -274,6 +310,7 @@ Record bu_tree_automata := mk_bu_tree_automata {
 
 Definition automata_size (A : bu_tree_automata) : nat :=
   #|states| + size (transitions A).
+*)
 
 (*
 Definition L (A : bu_tree_automata) (q : states) (i : nat) : seq (terms X) :=
