@@ -245,7 +245,6 @@ Lemma connected_correct (S : prototree) (p : string) :
   (p == [::]) || (p != [::]) && (parent p \notin S).
 Proof. by case: p. Qed.
 
-
 Require Import Logic.FunctionalExtensionality.
 Section Terms.
 
@@ -253,50 +252,67 @@ Variable r : nat.
 Variable X : finType.
 Variable d : X.
 
-Record term := Term {
+Record prototerm := Prototerm {
   pos : bprototree r;
-  assignment_of_term :> [r*] -> X;
+  assignment_of_prototerm :> [r*] -> X;
 }.
 
-Definition term_code (t : term) : seq ([r*] * X) :=
+Definition prototerm_code (t : prototerm) : seq ([r*] * X) :=
   zip (pos t) (map t (pos t)).
 
-Definition term_decode (AX : seq ([r*] * X)) : term :=
-  Term (unzip1 AX) (fun s => nth d (unzip2 AX) (index s (unzip1 AX))).
+Definition prototerm_decode (AX : seq ([r*] * X)) : prototerm :=
+  Prototerm (unzip1 AX) (fun s => (nth d (unzip2 AX) (index s (unzip1 AX)))).
 
 
-Lemma term_codeK : cancel term_code term_decode.
+Lemma prototerm_codeK (t : prototerm) (s : [r*]) :
+  s \in pos t -> prototerm_decode (prototerm_code t) s = t s.
 Proof.
-  move=> [A t].
-  rewrite /term_code /term_decode /=.
-  congr Term.
-    by rewrite unzip1_zip ?size_map.
-  rewrite unzip1_zip ?size_map // unzip2_zip ?size_map //.
-  apply: functional_extensionality => s.
-  elim: A.
-    rewrite /=.
-    (* FIXME this is false as it stands *)
+  move: t => [post t].
+  rewrite /prototerm_code /prototerm_decode /=.
+  rewrite unzip2_zip ?size_map // unzip1_zip ?size_map //.
+  elim: post => [// | a A IH].
+  rewrite in_cons /=.
+  case: ifP => [/eqP -> // | ].
+  by rewrite eq_sym => ->.
+Qed.
+
+Definition eqt : rel prototerm := fun t1 t2 =>
+  prototerm_code t1 == prototerm_code t2.
+Notation "t1 =t t2" := (eqt t1 t2) (at level 70).
+
+Definition build_prototerm (a : X) (ts : r.-tuple prototerm) : prototerm :=
+  let post := [::] ::
+    flatten [seq [seq rcons p j | p <- pos (tnth ts j)] | j <- ord_enum r]
+  in
+  let t (s : [r*]) :=
+    match rev s with
+    | [::] => a
+    | j :: p => (tnth ts j) (rev p)
+    end
+  in
+  Prototerm post t.
+
+(* FIXME This is silly because pos could have type tree *)
+Record term := Term {
+  term_of_prototerm :> prototerm;
+  _ : tree_like (pos term_of_prototerm);
+}.
+
+Lemma tree_like_build (a : X) (ts : r.-tuple prototerm) :
+    all (@tree_like r) (map pos ts) ->
+  tree_like (pos (build_prototerm a ts)).
+Proof.
+  move=> /allP /= H.
+  rewrite /tree_like; apply /and3P; split.
+  - apply /suffix_closedP => p j.
+    rewrite 2!in_cons /=.
+    case: p => //=.
+    admit.
+  - admit.
+  - admit.
 Admitted.
 
-Definition term_eqMixin := CanEqMixin term_codeK.
-Canonical term_eqType := EqType term term_eqMixin.
-
-
-
-
-
-
 (*
-Definition build_term (a : X) (ts : r.-tuple prototerm) : prototerm := fun s =>
-  match rev s with
-  | [::] => a
-  | j :: p => (tnth ts j) (rev p)
-  end.
-
-(* TODO (well-defined) term *)
-(* TODO domain of a term Pos(t) *)
-(* TODO some lemma about how terms are well-defined from well-defined terms *)
-
 Variable state : finType.
 
 Record buta := mkButa {
@@ -361,3 +377,8 @@ Definition L (A : bu_tree_automata) (q : states) (i : nat) : seq (terms X) :=
   | (q1 :: qs, a, q) :: tl => [::]
   end.
 *)
+
+Inductive states :=
+  | base : nat -> states
+  | build : states * states -> states.
+Check build (build (base 0, base 1), base 2).
