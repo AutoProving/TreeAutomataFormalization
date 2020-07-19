@@ -282,7 +282,7 @@ Proof. by case: p. Qed.
 Hint Resolve rcons_nil : core.
 
 Lemma build_ptreeE (trees : r.-tuple (ptree r)) (p : [r*]) (j : [r]) :
-  rcons p j \in build_ptree trees = (p \in (tnth trees j)).
+  (rcons p j \in build_ptree trees) = (p \in (tnth trees j)).
 Proof.
   rewrite /build_ptree in_cons rcons_nil /=.
   have [pintreesj |] := boolP (p \in _).
@@ -291,20 +291,17 @@ Proof.
   by move=> /allpairsPdep /= [k [s [_ sintreesk /rcons_inj [-> ->]]]].
 Qed.
 
-Lemma tree_like_build (trees : r.-tuple (ptree r)) :
+Lemma build_tree_like (trees : r.-tuple (ptree r)) :
     all (fun tr => tr != [::]) trees ->
     all (@tree_like r) trees ->
   tree_like (build_ptree trees).
 Proof.
   move=> /allP /= nonempty /allP /=.
   rewrite /tree_like => validtrees; apply /and3P; split.
-  - rewrite /build_ptree.
-    apply /suffix_closedP => s i.
-    have /= -> := in_cons [::] _ (_ :: _).
-    case: s => [// | j s].
-    rewrite in_cons /= (lastI j).
-    have /= mapf := map_f (rcons (belast j s)).
-    admit.
+  - apply /suffix_closedP; case => [// | j p i].
+    rewrite lastI build_ptreeE /= (lastI j p) build_ptreeE.
+    move: (validtrees (tnth _ (last j p)) (mem_tnth _ _)) => /and3P [].
+    by move=> /suffix_closedP sc _ _; apply: sc.
   - apply /well_numberedP; case => [j | j p i].
       move=> _ k kltj; rewrite /build_ptree.
       rewrite lastI build_ptreeE /=.
@@ -322,17 +319,22 @@ Proof.
     + exact: ord_enum_uniq.
     + by move=> k _; move: (validtrees (tnth _ k) (mem_tnth _ _)) => /and3P [].
     + by move=> /= [j1 p1] [j2 p2] _ _ /rcons_inj [p1e1p2 j1eqj2]; f_equal.
-Admitted.
+Qed.
 
 Definition build_pterm (a : X) (ts : r.-tuple pterm) : pterm :=
   let post := build_ptree [tuple of map pos ts] in
   let t (s : [r*]) :=
-    match rev s with
-    | [::] => a
-    | j :: p => (tnth ts j) (rev p)
-    end
+    if s is j :: p then (tnth ts (last j p)) (belast j p) else a
   in
   Pterm post t.
+
+(* FIXME probably needs some more assumptions *)
+Lemma build_correct (a : X) (ts : r.-tuple pterm) (s : [r*]) (i : [r]) :
+    s \in pos (build_pterm a ts) ->
+  (build_pterm a ts) (rcons s i) = (tnth ts i) s.
+Proof.
+  move: (rcons_nil s i) => /=; set p := rcons s i; case: (rcons s i) => //.
+Admitted.
 
 (* FIXME This is silly because pos could have type tree *)
 Record term := Term {
