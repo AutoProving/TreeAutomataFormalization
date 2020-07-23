@@ -333,7 +333,11 @@ Lemma build_correct (a : X) (ts : r.-tuple pterm) (s : [r*]) (i : [r]) :
     s \in pos (build_pterm a ts) ->
   (build_pterm a ts) (rcons s i) = (tnth ts i) s.
 Proof.
-  move: (rcons_nil s i) => /=; set p := rcons s i; case: (rcons s i) => //.
+  have : rcons s i = rcons s i by [].
+  case: {2}(rcons s i) => [/eqP | j p eqrconsjp].
+    by rewrite rcons_nil.
+  rewrite eqrconsjp /=.
+
 Admitted.
 
 (* FIXME This is silly because pos could have type tree *)
@@ -342,72 +346,44 @@ Record term := Term {
   _ : tree_like (pos term_of_pterm);
 }.
 
-(*
-Variable state : finType.
+End Terms.
 
-Record buta := mkButa {
+Definition break_pterm (r : nat) (Sigma : finType) (t : pterm r Sigma) :
+  Sigma * (r.-tuple (pterm r Sigma)).
+Admitted.
+
+Section Automata.
+
+Variable (r m : nat).
+Variable (Sigma state : finType).
+
+(* Pre-bottom up tree automaton *)
+Record pbuta := mkButa {
   final_states : seq state;
-  transitions : seq (seq state * X * state);
+  (* The k-ary transitions are given by (transitions k) *)
+  transitions : forall (n : [m.+1]), seq (n.-tuple state * Sigma * state);
 }.
 
-Definition tasize (A : buta) : nat :=
-  #|state| + size (transitions A).
+Definition valid_buta (A : pbuta) : bool :=
+  (uniq (final_states A)).
 
-(* This is not even the correct definition, but most importantly, prototerms *)
-(* prototerms are not an eqType yet... *)
-Fail Definition this_term_reaches_this_state_at_this_depth
-    (A : buta) (q : state) (i : nat) (t : prototerm) : bool :=
+Definition tasize (A : pbuta) : nat :=
+  #|state| + \sum_(n < m.+1) (size (transitions A n)).
+
+About break_pterm.
+(* The term (build a ts) reaches state q in depth at most i. *)
+Fixpoint reach (A : pbuta) (k : [m.+1]) (t : pterm k Sigma)
+    (q : state) (i : nat) : bool :=
+  let (a, ts) := break_pterm t in
   match i with
   | 0 => false
-  | 1 => ([::], t, q) \in (transitions A)
-  | _ => false
+  | 1 => (k == ord0) && (([tuple], a, q) \in (transitions A ord0))
+  | (n.+1 as n').+1 => [exists tran in (transitions A k),
+              [&& tran.1.2 == a,
+                  tran.2 == q &
+                  [forall j in [k],
+                      reach A (tnth ts j) (tnth tran.1.1 j) n'
+                  ]
+              ]
+            ]
   end.
-*)
-End Terms.
-(*
-Definition tfst {X Y Z : Type} (d : X * Y * Z) :=
-  match d with (a, b, c) => a end.
-Notation "d ~1" := (tfst d) (at level 2).
-
-Definition tscd {X Y Z : Type} (d : X * Y * Z) :=
-  match d with (a, b, c) => b end.
-Notation "d ~2" := (tscd d) (at level 2).
-
-Definition thrd {X Y Z : Type} (d : X * Y * Z) :=
-  match d with (a, b, c) => c end.
-Notation "d ~3" := (thrd d) (at level 2).
-
-Section TreeAutomata.
-
-Variable X : finType.
-Variable states : finType.
-
-Record bu_tree_automata := mk_bu_tree_automata {
-  final_states : seq states;
-  transitions : seq (seq states * X * states);
-}.
-
-Definition automata_size (A : bu_tree_automata) : nat :=
-  #|states| + size (transitions A).
-*)
-
-(*
-Definition L (A : bu_tree_automata) (q : states) (i : nat) : seq (terms X) :=
-  match i with
-  | 0 => [::]
-  | 1 => filter (fun d => (d~1 == [::]) && (d~3 == q)) (transitions A)
-  | _ => [::]
-  end.
-*)
-
-(*
-  match (transitions A) with
-  | [::] => [::]
-  | ([::], a, q) :: tl => [::]
-  | (q1 :: qs, a, q) :: tl => [::]
-  end.
-*)
-
-Inductive states :=
-  | base : nat -> states
-  | build : states * states -> states.
