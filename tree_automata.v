@@ -359,6 +359,19 @@ Proof.
   by apply /forallP => /= j; apply: IH; apply: H.
 Qed.
 
+Definition accepts (A : tbuta) (t : tterm) : bool :=
+  [exists q in final A, reach_eventually A q t].
+
+Definition transitions_preim (A : tbuta) (q : state) :
+    {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)} :=
+  [ffun k : [r.+1] => [seq tr <- transitions A k | tr.2 == q]].
+
+Definition in_degree_state (A : tbuta) (q : state) : nat :=
+  \sum_(k < r.+1) (size (transitions_preim A q k)).
+
+Definition in_degree (A : tbuta) : nat :=
+  \max_(q in state) (in_degree_state A q).
+
 End Tterms.
 
 Section Terms.
