@@ -240,6 +240,120 @@ Proof. by case: p. Qed.
 
 End Strings.
 
+Section Tterms.
+
+Variable r : nat.
+
+(* Trees where each node has k children, and k is at most r *)
+Inductive ttree : Type :=
+| leaf : ttree
+| node : forall k : [r.+1], ttree^k -> ttree.
+
+Variable Sigma : finType.
+
+Inductive tterm : Type :=
+| tleaf : Sigma -> tterm
+| tnode : Sigma -> forall k : [r.+1], tterm^k -> tterm.
+
+Lemma tterm_strong_ind (P : tterm -> Prop) :
+    (forall a : Sigma, P (tleaf a)) ->
+    (forall (a : Sigma) (k : [r.+1]) (f : tterm^k),
+      (forall j : [k], P (f j)) -> P (tnode a f)
+    ) ->
+  forall t : tterm, P t.
+Proof.
+Admitted.
+
+Fixpoint tpos (t : tterm) : ttree :=
+  match t with
+  | tleaf _ => leaf
+  | tnode _ k f => @node k (finfun (tpos \o f))
+  end.
+Coercion tpos : tterm >-> ttree.
+
+Variable state : finType.
+
+Record tbuta : Type := {
+  final : seq state;
+  transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
+}.
+
+Definition buta_size (A : tbuta) : nat :=
+  #|state| + \sum_(k < r.+1) (size (transitions A k)).
+
+Fixpoint reach_at_depth (A : tbuta) (q : state) (t : tterm) (i : nat) : bool :=
+  match i, t with
+  | 0, _ => false
+  | n.+1, tleaf a => ([tuple], a, q) \in transitions A ord0
+  | n.+1, tnode a k f =>
+    [exists tr in transitions A k,
+      [&& tr.1.2 == a,
+          tr.2 == q &
+          [forall j : [k], reach_at_depth A (tnth tr.1.1 j) (f j) n]
+      ]
+    ]
+  end.
+
+Lemma reach_at_depth_leq (A : tbuta) (q : state) (t : tterm) (i j : nat) :
+    i <= j ->
+    reach_at_depth A q t i ->
+  reach_at_depth A q t j.
+Proof.
+  move: i; elim: j => [i | j IH i].
+    by rewrite leqn0 => /eqP ->.
+  case: ltngtP => [||->] //.
+  move=> leij _ reachi.
+  have := IH _ leij reachi => {IH leij reachi}.
+  case: j; elim/tterm_strong_ind: t => //=.
+  move=> a k f IH n /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+  case: n.
+    move=> /forallP /=.
+    move: k f IH qs qsaq'_tran; case; case.
+      move=> lt0r1 /= f IH qs qsaq'_tran _.
+      apply /'exists_and4P => /=; exists (qs, a', q'); split=> //=.
+      by apply /forallP => /= [[]].
+    move=> k ltk1r1 /= f IH qs qsaq'_tran _.
+    apply /'exists_and4P => /=; exists (qs, a', q'); split=> //=.
+    apply /forallP => /= j.
+    case: (f j) => /=.
+Admitted.
+
+Fixpoint reach_eventually (A : tbuta) (q : state) (t : tterm) : bool :=
+  match t with
+  | tleaf a => ([tuple], a, q) \in transitions A ord0
+  | tnode a k f =>
+    [exists tr in transitions A k,
+      [&& tr.1.2 == a,
+          tr.2 == q &
+          [forall j : [k], reach_eventually A (tnth tr.1.1 j) (f j)]
+      ]
+    ]
+  end.
+
+Lemma reach_at_depth_eventually (A : tbuta) (q : state) (t : tterm) :
+  reflect (exists i : nat, reach_at_depth A q t i) (reach_eventually A q t).
+Proof.
+  apply: (iffP idP) => [|[i]].
+    move: t q; elim/tterm_strong_ind => [a | a k f IH q].
+      by exists 1.
+    move=> /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+    rewrite -/reach_eventually => /forallP /= revent.
+    have rdepth := IH _ _ (revent _) => {IH revent}.
+    set m := \max_(j < k) (xchoose (rdepth j)); exists m.+1.
+    apply /'exists_and4P => /=.
+    exists (qs, a', q'); split=> //.
+    apply /forallP => /= j.
+    by apply: (reach_at_depth_leq _ (xchooseP (rdepth j))); apply: leq_bigmax.
+  move: t q; elim i => [// | n IH]; case => //.
+  move=> a k f q /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+  move=> /forallP /=; rewrite -/reach_at_depth => H.
+  apply /'exists_and4P => /=.
+  exists (qs, a', q'); split => //=.
+  by apply /forallP => /= j; apply: IH; apply: H.
+Qed.
+
+End Tterms.
+
 Section Terms.
 
 Variable r : nat.
@@ -321,6 +435,9 @@ Proof.
     + by move=> /= [j1 p1] [j2 p2] _ _ /rcons_inj [p1e1p2 j1eqj2]; f_equal.
 Qed.
 
+Definition break_ptree (t : ptree r) : (r.-tuple (ptree r)).
+Admitted.
+
 Definition build_pterm (a : X) (ts : r.-tuple pterm) : pterm :=
   let post := build_ptree [tuple of map pos ts] in
   let t (s : [r*]) :=
@@ -361,14 +478,14 @@ Variable (Sigma state : finType).
 Record pbuta := mkButa {
   final_states : seq state;
   (* The k-ary transitions are given by (transitions k) *)
-  transitions : forall (n : [m.+1]), seq (n.-tuple state * Sigma * state);
+  trans : forall (n : [m.+1]), seq (n.-tuple state * Sigma * state);
 }.
 
 Definition valid_buta (A : pbuta) : bool :=
   (uniq (final_states A)).
 
 Definition tasize (A : pbuta) : nat :=
-  #|state| + \sum_(n < m.+1) (size (transitions A n)).
+  #|state| + \sum_(n < m.+1) (size (trans A n)).
 
 About break_pterm.
 (* The term (build a ts) reaches state q in depth at most i. *)
@@ -377,8 +494,8 @@ Fixpoint reach (A : pbuta) (k : [m.+1]) (t : pterm k Sigma)
   let (a, ts) := break_pterm t in
   match i with
   | 0 => false
-  | 1 => (k == ord0) && (([tuple], a, q) \in (transitions A ord0))
-  | (n.+1 as n').+1 => [exists tran in (transitions A k),
+  | 1 => (k == ord0) && (([tuple], a, q) \in (trans A ord0))
+  | (n.+1 as n').+1 => [exists tran in (trans A k),
               [&& tran.1.2 == a,
                   tran.2 == q &
                   [forall j in [k],
