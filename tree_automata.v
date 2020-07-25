@@ -255,14 +255,16 @@ Inductive tterm : Type :=
 | tleaf : Sigma -> tterm
 | tnode : Sigma -> forall k : [r.+1], tterm^k -> tterm.
 
-Lemma tterm_strong_ind (P : tterm -> Prop) :
-    (forall a : Sigma, P (tleaf a)) ->
-    (forall (a : Sigma) (k : [r.+1]) (f : tterm^k),
+Fixpoint tterm_nested_ind (P : tterm -> Prop)
+    (Pleaf : forall a : Sigma, P (tleaf a))
+    (Pnode : forall (a : Sigma) (k : [r.+1]) (f : tterm^k),
       (forall j : [k], P (f j)) -> P (tnode a f)
-    ) ->
-  forall t : tterm, P t.
-Proof.
-Admitted.
+    )
+    (t : tterm) : P t :=
+  match t with
+  | tleaf a => Pleaf a
+  | tnode a k f => Pnode a k f (fun j => tterm_nested_ind Pleaf Pnode (f j))
+  end.
 
 Fixpoint tpos (t : tterm) : ttree :=
   match t with
@@ -294,6 +296,10 @@ Fixpoint reach_at_depth (A : tbuta) (q : state) (t : tterm) (i : nat) : bool :=
     ]
   end.
 
+Lemma reach_at_depth0 (A : tbuta) (q : state) (t : tterm) :
+  reach_at_depth A q t 0 = false.
+Proof. by case: t. Qed.
+
 Lemma reach_at_depth_leq (A : tbuta) (q : state) (t : tterm) (i j : nat) :
     i <= j ->
     reach_at_depth A q t i ->
@@ -303,20 +309,21 @@ Proof.
     by rewrite leqn0 => /eqP ->.
   case: ltngtP => [||->] //.
   move=> leij _ reachi.
-  have := IH _ leij reachi => {IH leij reachi}.
-  case: j; elim/tterm_strong_ind: t => //=.
-  move=> a k f IH n /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+  have := IH _ leij reachi => {i IH leij reachi}.
+  case: j; move: q; elim/tterm_nested_ind: t => //=.
+  move=> a k f IH q n /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
   case: n.
-    move=> /forallP /=.
-    move: k f IH qs qsaq'_tran; case; case.
-      move=> lt0r1 /= f IH qs qsaq'_tran _.
-      apply /'exists_and4P => /=; exists (qs, a', q'); split=> //=.
+    move: f IH qs qsaq'_tran; case: k => []; case.
+      move=> lt0r1 f _ qs qsaq'_tran _.
+      apply /'exists_and4P => /=; exists (qs, a', q'); split=> //.
       by apply /forallP => /= [[]].
-    move=> k ltk1r1 /= f IH qs qsaq'_tran _.
-    apply /'exists_and4P => /=; exists (qs, a', q'); split=> //=.
-    apply /forallP => /= j.
-    case: (f j) => /=.
-Admitted.
+    move=> k ltk1r1 f _ qs _.
+    move=> reach0; exfalso; move: reach0; apply /negP; rewrite negb_forall.
+    by apply /existsP => /=; exists ord0; rewrite reach_at_depth0.
+  move=> n /forallP /= reachn1.
+  apply /'exists_and4P => /=; exists (qs, a', q'); split=> //.
+  by apply /forallP => /= j; apply: IH.
+Qed.
 
 Fixpoint reach_eventually (A : tbuta) (q : state) (t : tterm) : bool :=
   match t with
@@ -334,7 +341,7 @@ Lemma reach_at_depth_eventually (A : tbuta) (q : state) (t : tterm) :
   reflect (exists i : nat, reach_at_depth A q t i) (reach_eventually A q t).
 Proof.
   apply: (iffP idP) => [|[i]].
-    move: t q; elim/tterm_strong_ind => [a | a k f IH q].
+    move: t q; elim/tterm_nested_ind => [a | a k f IH q].
       by exists 1.
     move=> /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
     rewrite -/reach_eventually => /forallP /= revent.
@@ -487,7 +494,6 @@ Definition valid_buta (A : pbuta) : bool :=
 Definition tasize (A : pbuta) : nat :=
   #|state| + \sum_(n < m.+1) (size (trans A n)).
 
-About break_pterm.
 (* The term (build a ts) reaches state q in depth at most i. *)
 Fixpoint reach (A : pbuta) (k : [m.+1]) (t : pterm k Sigma)
     (q : state) (i : nat) : bool :=
