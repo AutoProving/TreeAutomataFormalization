@@ -275,7 +275,7 @@ Coercion tpos : tterm >-> ttree.
 
 Variable state : finType.
 
-Record tbuta : Type := {
+Record tbuta : Type := TBUTA {
   final : seq state;
   transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
 }.
@@ -373,6 +373,51 @@ Definition in_degree (A : tbuta) : nat :=
   \max_(q in state) (in_degree_state A q).
 
 End Tterms.
+
+Definition restrict (r : nat) (Sigma state : finType)
+    (A : tbuta r Sigma state) (n : [r.+1]) : tbuta n Sigma state :=
+  {|
+    final := final A;
+    transitions := [ffun k : [n.+1] =>
+      (transitions A (Ordinal (@leq_ltn_trans n _ _ (ltn_ord k) (ltn_ord n))))
+    ];
+  |}.
+
+Section Intersection.
+
+(* For now the automata are based on the same alphabet and have the same maximum arity *)
+Variables (r : nat).
+Variables (Sig : finType).
+Variables (st1 st2 : finType).
+
+Definition mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
+    (trs2 : seq (k.-tuple st2 * Sig * st2)) :=
+  [seq tr12 <- [seq (tr1, tr2) | tr1 <- trs1, tr2 <- trs2] |
+      tr12.1.1.2 == tr12.2.1.2].
+
+Definition merge
+    (trs1 : {ffun forall k : [r.+1], seq (k.-tuple st1 * Sig * st1)})
+    (trs2 : {ffun forall k : [r.+1], seq (k.-tuple st2 * Sig * st2)})
+  : {ffun forall k : [r.+1], seq (k.-tuple (st1 * st2)%type * Sig * (st1 * st2))}
+   :=
+  [ffun k : [r.+1] =>
+    [seq ([tuple of zip (val tr.1.1.1) (val tr.2.1.1)], tr.1.1.2, (tr.1.2, tr.2.2)) | tr <- mergeable (trs1 k) (trs2 k)]
+  ].
+
+Definition intersection (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2) :
+    tbuta r Sig (prod_finType st1 st2) :=
+  {|
+    final := [seq (f1, f2) | f1 <- (final A1), f2 <- (final A2)];
+    transitions := merge (transitions A1) (transitions A2);
+  |}.
+
+Lemma intersection_accepts (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2)
+    (t : tterm r Sig) :
+  accepts (intersection A1 A2) t = (accepts A1 t) && (accepts A2 t).
+Proof.
+Admitted.
+
+End Intersection.
 
 Section Terms.
 
