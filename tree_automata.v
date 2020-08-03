@@ -255,7 +255,8 @@ Inductive tterm : Type :=
 | tleaf : Sigma -> tterm
 | tnode : Sigma -> forall k : [r.+1], tterm^k -> tterm.
 
-Fixpoint tterm_nested_ind (P : tterm -> Prop)
+(* We define a nested induction principle because the default one is too weak *)
+Fixpoint tterm_nind (P : tterm -> Prop)
     (Pleaf : forall a : Sigma, P (tleaf a))
     (Pnode : forall (a : Sigma) (k : [r.+1]) (f : tterm^k),
       (forall j : [k], P (f j)) -> P (tnode a f)
@@ -263,7 +264,7 @@ Fixpoint tterm_nested_ind (P : tterm -> Prop)
     (t : tterm) : P t :=
   match t with
   | tleaf a => Pleaf a
-  | tnode a k f => Pnode a k f (fun j => tterm_nested_ind Pleaf Pnode (f j))
+  | tnode a k f => Pnode a k f (fun j => tterm_nind Pleaf Pnode (f j))
   end.
 
 Fixpoint tpos (t : tterm) : ttree :=
@@ -310,7 +311,7 @@ Proof.
   case: ltngtP => [||->] //.
   move=> leij _ reachi.
   have := IH _ leij reachi => {i IH leij reachi}.
-  case: j; move: q; elim/tterm_nested_ind: t => //=.
+  case: j; move: q; elim/tterm_nind: t => //=.
   move=> a k f IH q n /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
   case: n.
     move: f IH qs qsaq'_tran; case: k => []; case.
@@ -341,7 +342,7 @@ Lemma reach_at_depth_eventually (A : tbuta) (q : state) (t : tterm) :
   reflect (exists i : nat, reach_at_depth A q t i) (reach_eventually A q t).
 Proof.
   apply: (iffP idP) => [|[i]].
-    move: t q; elim/tterm_nested_ind => [a | a k f IH q].
+    move: t q; elim/tterm_nind => [a | a k f IH q].
       by exists 1.
     move=> /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
     rewrite -/reach_eventually => /forallP /= revent.
@@ -372,24 +373,153 @@ Definition in_degree_state (A : tbuta) (q : state) : nat :=
 Definition in_degree (A : tbuta) : nat :=
   \max_(q in state) (in_degree_state A q).
 
+
+
 End Tterms.
 
-Definition restrict (r : nat) (Sigma state : finType)
-    (A : tbuta r Sigma state) (n : [r.+1]) : tbuta n Sigma state :=
-  {|
-    final := final A;
-    transitions := [ffun k : [n.+1] =>
-      (transitions A (Ordinal (@leq_ltn_trans n _ _ (ltn_ord k) (ltn_ord n))))
-    ];
-  |}.
+
+Section Tsterms.
+
+Variable Sigma : finType.
+
+Inductive tsterm : Type :=
+| tsnone : tsterm
+| tsleaf : Sigma -> tsterm
+| tsnode : Sigma -> seq tsterm -> tsterm.
+
+Variable (r : nat).
+
+Fixpoint tsterm_of_tterm (t : tterm r Sigma) : tsterm :=
+  match t with
+  | tleaf a => tsleaf a
+  | tnode a k ts => tsnode a [seq tsterm_of_tterm (ts i) | i <- enum [k]]
+  end.
+(* FIXME the coercion doesn't respect the uniformity conditions and thus is never useable. *)
+(*Coercion tsterm_of_tterm : tterm >-> tsterm.*)
+
+Local Fixpoint sig_at_aux (t : tsterm) (revs : [r*]) : option Sigma :=
+  match revs, t with
+  | _, tsnone => None
+  | [::], tsleaf a | [::], tsnode a _ => Some a
+  | _ :: _, tsleaf _ => None
+  | j :: p, tsnode a ts => sig_at_aux (nth tsnone ts j) p
+  end.
+
+Definition sig_at (t : tsterm) (s : [r*]) : option Sigma :=
+  sig_at_aux t (rev s).
+
+Definition has_pos (t : tsterm) (s : [r*]) : bool :=
+  isSome (sig_at t s).
+
+(* TODO
+Lemma has_posP (t : tsterm) (s : [r*]) :
+  reflect
+    (?)
+    (has_pos t s).
+*)
+
+End Tsterms.
+
+Section Runs.
+
+Variable r : nat.
+Variable Sigma : finType.
+
+Fixpoint positions (t : tterm r Sigma) : seq [r.+1*] :=
+  match t with
+  | tleaf _ => [:: [::]]
+  | tnode _ k ts =>
+      [::] :: [seq rcons p (widen_ord (ltnW (ltn_ord k)) j) |
+        j <- ord_enum k,
+        p <- positions (ts j)
+      ]
+  end.
+
+Lemma positions_tree_like (t : tterm r Sigma) : tree_like (positions t).
+Proof.
+  rewrite /tree_like; apply /and3P; split.
+  - apply /suffix_closedP; case; first by case: t.
+    elim/tterm_nind: t => //=.
+    move=> _ k f IH j p i; rewrite 2!in_cons /= => /allpairsPdep /=.
+    move=> [l [s [link s_in_posfl ijp_eq_rconssl]]].
+    apply /allpairsPdep => /=.
+    exists l; exists (behead s); split => //.
+      admit.
+    admit.
+  - admit.
+  - elim/tterm_nind: t => [// | a k ts IH /=].
+    apply /andP; split.
+      by apply /allpairsPdep => /= [[j [p [_ _]]]]; case p.
+    apply: allpairs_uniq_dep; first exact: ord_enum_uniq.
+      by move=> j _; apply: IH.
+    by move=> [j1 p1] [j2 p2] _ _ /rcons_inj [p1e1p2 /ord_inj j1eqj2]; f_equal.
+
+(*
+  - apply /suffix_closedP; case => [// | j p i].
+    rewrite lastI build_ptreeE /= (lastI j p) build_ptreeE.
+    move: (validtrees (tnth _ (last j p)) (mem_tnth _ _)) => /and3P [].
+    by move=> /suffix_closedP sc _ _; apply: sc.
+  - apply /well_numberedP; case => [j | j p i].
+      move=> _ k kltj; rewrite /build_ptree.
+      rewrite lastI build_ptreeE /=.
+      move: (validtrees (tnth trees k) (mem_tnth _ _)) => /and3P [sc _ _].
+      apply: suffix_closed_nil => //.
+      by apply: (nonempty _ (mem_tnth _ _)).
+    rewrite lastI build_ptreeE /= => H k klti.
+    rewrite lastI build_ptreeE /=.
+    move: (validtrees (tnth _ (last j p)) (mem_tnth _ _)).
+    move=> /and3P [_ /well_numberedP wn _].
+    by apply: wn klti.
+ *)
+Admitted.
+
+Lemma positions_has_pos (t : tterm r Sigma) (s : [r.+1*]) :
+   (s \in positions t) = (has_pos (tsterm_of_tterm t) s).
+Proof.
+Admitted.
+
+Variable state : finType.
+Variable A : tbuta r Sigma state.
+
+Definition tchildren (t : tterm r Sigma) : seq (tterm r Sigma) :=
+  match t with
+  | tleaf _ => [::]
+  | tnode _ k ts => fgraph ts
+  end.
+
+(* FIXME *)
+Fail Record run := {
+  rterm : tterm r Sigma;
+  rrho : [r.+1*] -> state;
+  _ : forall (s : [r.+1*]), has_pos (tsterm_of_tterm rterm) s ->
+    (
+      [tuple of map rrho (children (positions rterm) s)],
+      sig_at (tsterm_of_tterm rterm) s,
+      rrho s
+    ) \in transitions A (inord (size (children (positions rterm) s)));
+}.
+
+
+
+End Runs.
 
 Section Intersection.
 
-(* For now the automata are based on the same alphabet and have the same maximum arity *)
-Variables (r : nat).
-Variables (Sig : finType).
+Variable (r : nat).
+Variable (Sig : finType).
+
+Definition restrict (state : finType)
+    (A : tbuta r Sig state) (n : [r.+1]) : tbuta n Sig state :=
+  {|
+    final := final A;
+    transitions := [ffun k : [n.+1] =>
+      (transitions A (widen_ord (ltn_ord n) k))
+    ];
+  |}.
+
 Variables (st1 st2 : finType).
 
+(* For now the automata are based on the same alphabet and have the same maximum arity *)
 Definition mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
     (trs2 : seq (k.-tuple st2 * Sig * st2)) :=
   [seq tr12 <- [seq (tr1, tr2) | tr1 <- trs1, tr2 <- trs2] |
@@ -401,7 +531,10 @@ Definition merge
   : {ffun forall k : [r.+1], seq (k.-tuple (st1 * st2)%type * Sig * (st1 * st2))}
    :=
   [ffun k : [r.+1] =>
-    [seq ([tuple of zip (val tr.1.1.1) (val tr.2.1.1)], tr.1.1.2, (tr.1.2, tr.2.2)) | tr <- mergeable (trs1 k) (trs2 k)]
+    [seq ([tuple of zip (val tr.1.1.1) (val tr.2.1.1)],
+          tr.1.1.2,
+          (tr.1.2, tr.2.2)
+         ) | tr <- mergeable (trs1 k) (trs2 k)]
   ].
 
 Definition intersection (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2) :
