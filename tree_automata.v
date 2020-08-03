@@ -6,14 +6,20 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
+(*******************************************************************************)
 (*   This library is heavily based upon mathcomp.ssreflect libraries such as:  *)
-(*     https://math-comp.github.io/htmldoc/mathcomp.ssreflect.seq.html         *)
-(*     https://math-comp.github.io/htmldoc/mathcomp.ssreflect.fintype.html     *)
-(*     https://math-comp.github.io/htmldoc/mathcomp.ssreflect.tuple.html       *)
+(*   - https://math-comp.github.io/htmldoc/mathcomp.ssreflect.seq.html         *)
+(*   - https://math-comp.github.io/htmldoc/mathcomp.ssreflect.fintype.html     *)
+(*   - https://math-comp.github.io/htmldoc/mathcomp.ssreflect.tuple.html       *)
+(*   - https://math-comp.github.io/htmldoc/mathcomp.ssreflect.finfun.html      *)
 (*                                                                             *)
 (*                                                                             *)
-(*   Here are short descriptions of currently implemented functionality.       *)
-(*   Let (r : nat), (j, k : [r]) (p, q, s : [r*]), and (U : ptree)             *)
+(*   Here are short descriptions of the functionality currently implemented.   *)
+(*                                                                             *)
+(*                                                                             *)
+(*                        *** STRING-BASED TYPES ***                           *)
+(*                                                                             *)
+(*   Let (r : nat) (j, k : [r]) (p, q, s : [r*]) (U : ptree) (T : Type).       *)
 (*                                                                             *)
 (*                                 DATATYPES                                   *)
 (*              nat == the natural numbers                                     *)
@@ -23,9 +29,14 @@ Unset Printing Implicit Defensive.
 (*             [::] == the empty list (or string depending on its type)        *)
 (*           j :: p == a string corresponding to prepending j to p             *)
 (* [:: j1; ...; jn] == the string with the elements j1 to jn                   *)
+(*       r.-tuple T == the type of tuples with r elements of type T            *)
+(*              T^r == the type of the finite functions with input [r] and     *)
+(*                     output T; isomorphic to r.-tuple T, but structurally    *)
+(*                     positive                                                *)
 (*                                                                             *)
 (*   The following coercions are available:                                    *)
 (*   - From [r] to nat                                                         *)
+(*   - From r.-tuple T to seq T                                                *)
 (*                                                                             *)
 (*                              SUFFIX-CLOSED                                  *)
 (*         parent p == the string p without the first element, or [::] if p is *)
@@ -47,6 +58,83 @@ Unset Printing Implicit Defensive.
 (*      is_leaf U p == there are no descendants of p in U                      *)
 (*         leaves U == a list of all the leaves of U                           *)
 (*      connected U == there is only one string in U without its parent in U   *)
+(*                                                                             *)
+(*                                                                             *)
+(*                           *** TREE-BASED TYPES ***                          *)
+(*                                                                             *)
+(*   Let (T : Type) (r i n : nat) (Sigma : finType) (t : tterm r Sigma)        *)
+(* (state : finType) (q : state) (A : tbuta r Sigma state) (t' : tsterm).      *)
+(*                                                                             *)
+(*                                    TERMS                                    *)
+(*          ttree r == structural trees with constructors                      *)
+(*                     - leaf                                                  *)
+(*                     - node k f                                              *)
+(*                     where (k : [r.+1]) is the arity of the node (i.e., the  *)
+(*                     number of children) and (f : ttree^k) is a finite       *)
+(*                     function assigning a child to each (j : [k])            *)
+(*    tterm r Sigma == structural terms with constructors                      *)
+(*                     - tleaf a                                               *)
+(*                     - tnode a k f                                           *)
+(*                     where (a : Sigma) is a label, (k : [r.+1]) is the arity *)
+(*                     of the node and (f : tterm^k) is as above               *)
+(*       tterm_nind == a nested induction principle for tterm (the standard    *)
+(*                     one is as weak as a case analysis)                      *)
+(*           tpos t == the ttree obtained from t by forgeting the labels       *)
+(*      positions t == the ptree corresponding to t                            *)
+(*      tchildren t == a list of the children of t as tterms                   *)
+(*     tsterm Sigma == structural terms based on seq instead of tuple with     *)
+(*                     constructors                                            *)
+(*                     - tsnone                                                *)
+(*                     - tsleaf a                                              *)
+(*                     - tsnode a ts                                           *)
+(*                     where (a : Sigma) is a label and (ts : seq tsterm) is a *)
+(*                     list of children                                        *)
+(*      tsterm_of_tterm t == the tsterm corresponding to t                     *)
+(*      sig_at t' s == if s is a position in t', this outputs Some a where a   *)
+(*                     is the label found at that position; otherwise outputs  *)
+(*                     None                                                    *)
+(*     has_pos t' s == s is a position in t'                                   *)
+(*                                                                             *)
+(*                                  AUTOMATA                                   *)
+(*    tbuta r Sigma state == bottom-up tree automata with the following fields *)
+(*                     - (final : seq state) represents the final (i.e.,       *)
+(*                       accepting) states                                     *)
+(*                     - (transitions : {ffun forall k : [r.+1],               *)
+(*                         seq (k.-tuple state * Sigma * state)})              *)
+(*                       represents the transition function. Thus,             *)
+(*                       (transitions k) is the list of the transitions with   *)
+(*                       arity k                                               *)
+(*      buta_size A == the size of the automaton A, equal to the sum of the    *)
+(*                     number of states with the number of transitions         *)
+(* reach_at_depth A q t i == in the automaton A, term t reaches state q in at  *)
+(*                     most i steps                                            *)
+(* reach_eventually A q t == in A, t eventually reaches q                      *)
+(*      accepts A t == t eventually reaches one of the final states of A       *)
+(*  transitions_preim A q == the transitions of A that have q as a consequent  *)
+(*    in_degree_state A q == the number of transitions of A that have q as a   *)
+(*                     consequent                                              *)
+(*      in_degree A == the maximum in-degree of any given state of A           *)
+(* restrict r Sigma state A n (nler : n <= r) == the (tbuta n Sigma state)     *)
+(*                     automaton corresponding to A without the transitions    *)
+(*                     with greater than n arity                               *)
+(*                                                                             *)
+(*   Let (st1 st2 : finType)  (r1 r2 : nat)                                    *)
+(* (trsik : seq (k.-tuple sti * Sig * sti))                                    *)
+(* (trsi : {ffun forall k : [r.+1], seq (k.-tuple sti * Sig * sti)})           *)
+(* (Ai : tbuta r Sigma sti) (Ai' : tbuta ri Sigma sti), with i = 1, 2          *)
+(*                                                                             *)
+(* mergeable k trs1k trs2k == the list of pairs (tr1, tr2) such that           *)
+(*                     tr1 \in trs1k, tr2 \in trs2k, and the labels of tr1 and *)
+(*                     tr2 coincide                                            *)
+(*         merge trs1 trs2 == the result of merging the transition functions   *)
+(*                     tr1 and tr2                                             *)
+(*     intersection1 A1 A2 == the automaton whose final states are all the     *)
+(*                     pairs of final states from A1 and A2, and whose         *)
+(*                     transition function is the merge of the transition      *)
+(*                     functions of A1 and A2                                  *)
+(*    intersection A1' A2' == the intersection1 of the restrictions of A1' and *)
+(*                     A2' to the minumum between r1 and r2                    *)
+
 
 
 
@@ -168,10 +256,10 @@ Record tree := Tree {
   _ : tree_like ptree_of_tree
 }.
 
-(* p is a parent of q *)
+(* p is a parent of q                                                          *)
 Definition is_parent (p q : [r*]) : bool := parent p == q.
 
-(* p is a child of q *)
+(* p is a child of q                                                           *)
 Definition is_child (p q : [r*]) : bool := is_parent q p.
 
 Definition is_ancestor (p q : [r*]) : bool :=
@@ -244,7 +332,7 @@ Section Tterms.
 
 Variable r : nat.
 
-(* Trees where each node has k children, and k is at most r *)
+(* Trees where each node has k children, and k is at most r                    *)
 Inductive ttree : Type :=
 | leaf : ttree
 | node : forall k : [r.+1], ttree^k -> ttree.
@@ -255,7 +343,7 @@ Inductive tterm : Type :=
 | tleaf : Sigma -> tterm
 | tnode : Sigma -> forall k : [r.+1], tterm^k -> tterm.
 
-(* We define a nested induction principle because the default one is too weak *)
+(* We define a nested induction principle because the default one is too weak  *)
 Fixpoint tterm_nind (P : tterm -> Prop)
     (Pleaf : forall a : Sigma, P (tleaf a))
     (Pnode : forall (a : Sigma) (k : [r.+1]) (f : tterm^k),
@@ -273,159 +361,7 @@ Fixpoint tpos (t : tterm) : ttree :=
   | tnode _ k f => @node k (finfun (tpos \o f))
   end.
 Coercion tpos : tterm >-> ttree.
-
-Variable state : finType.
-
-Record tbuta : Type := TBUTA {
-  final : seq state;
-  transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
-}.
-
-Definition buta_size (A : tbuta) : nat :=
-  #|state| + \sum_(k < r.+1) (size (transitions A k)).
-
-Fixpoint reach_at_depth (A : tbuta) (q : state) (t : tterm) (i : nat) : bool :=
-  match i, t with
-  | 0, _ => false
-  | n.+1, tleaf a => ([tuple], a, q) \in transitions A ord0
-  | n.+1, tnode a k f =>
-    [exists tr in transitions A k,
-      [&& tr.1.2 == a,
-          tr.2 == q &
-          [forall j : [k], reach_at_depth A (tnth tr.1.1 j) (f j) n]
-      ]
-    ]
-  end.
-
-Lemma reach_at_depth0 (A : tbuta) (q : state) (t : tterm) :
-  reach_at_depth A q t 0 = false.
-Proof. by case: t. Qed.
-
-Lemma reach_at_depth_leq (A : tbuta) (q : state) (t : tterm) (i j : nat) :
-    i <= j ->
-    reach_at_depth A q t i ->
-  reach_at_depth A q t j.
-Proof.
-  move: i; elim: j => [i | j IH i].
-    by rewrite leqn0 => /eqP ->.
-  case: ltngtP => [||->] //.
-  move=> leij _ reachi.
-  have := IH _ leij reachi => {i IH leij reachi}.
-  case: j; move: q; elim/tterm_nind: t => //=.
-  move=> a k f IH q n /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
-  case: n.
-    move: f IH qs qsaq'_tran; case: k => []; case.
-      move=> lt0r1 f _ qs qsaq'_tran _.
-      apply /'exists_and4P => /=; exists (qs, a', q'); split=> //.
-      by apply /forallP => /= [[]].
-    move=> k ltk1r1 f _ qs _.
-    move=> reach0; exfalso; move: reach0; apply /negP; rewrite negb_forall.
-    by apply /existsP => /=; exists ord0; rewrite reach_at_depth0.
-  move=> n /forallP /= reachn1.
-  apply /'exists_and4P => /=; exists (qs, a', q'); split=> //.
-  by apply /forallP => /= j; apply: IH.
-Qed.
-
-Fixpoint reach_eventually (A : tbuta) (q : state) (t : tterm) : bool :=
-  match t with
-  | tleaf a => ([tuple], a, q) \in transitions A ord0
-  | tnode a k f =>
-    [exists tr in transitions A k,
-      [&& tr.1.2 == a,
-          tr.2 == q &
-          [forall j : [k], reach_eventually A (tnth tr.1.1 j) (f j)]
-      ]
-    ]
-  end.
-
-Lemma reach_at_depth_eventually (A : tbuta) (q : state) (t : tterm) :
-  reflect (exists i : nat, reach_at_depth A q t i) (reach_eventually A q t).
-Proof.
-  apply: (iffP idP) => [|[i]].
-    move: t q; elim/tterm_nind => [a | a k f IH q].
-      by exists 1.
-    move=> /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
-    rewrite -/reach_eventually => /forallP /= revent.
-    have rdepth := IH _ _ (revent _) => {IH revent}.
-    set m := \max_(j < k) (xchoose (rdepth j)); exists m.+1.
-    apply /'exists_and4P => /=.
-    exists (qs, a', q'); split=> //.
-    apply /forallP => /= j.
-    by apply: (reach_at_depth_leq _ (xchooseP (rdepth j))); apply: leq_bigmax.
-  move: t q; elim i => [// | n IH]; case => //.
-  move=> a k f q /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
-  move=> /forallP /=; rewrite -/reach_at_depth => H.
-  apply /'exists_and4P => /=.
-  exists (qs, a', q'); split => //=.
-  by apply /forallP => /= j; apply: IH; apply: H.
-Qed.
-
-Definition accepts (A : tbuta) (t : tterm) : bool :=
-  [exists q in final A, reach_eventually A q t].
-
-Definition transitions_preim (A : tbuta) (q : state) :
-    {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)} :=
-  [ffun k : [r.+1] => [seq tr <- transitions A k | tr.2 == q]].
-
-Definition in_degree_state (A : tbuta) (q : state) : nat :=
-  \sum_(k < r.+1) (size (transitions_preim A q k)).
-
-Definition in_degree (A : tbuta) : nat :=
-  \max_(q in state) (in_degree_state A q).
-
-
-
-End Tterms.
-
-
-Section Tsterms.
-
-Variable Sigma : finType.
-
-Inductive tsterm : Type :=
-| tsnone : tsterm
-| tsleaf : Sigma -> tsterm
-| tsnode : Sigma -> seq tsterm -> tsterm.
-
-Variable (r : nat).
-
-Fixpoint tsterm_of_tterm (t : tterm r Sigma) : tsterm :=
-  match t with
-  | tleaf a => tsleaf a
-  | tnode a k ts => tsnode a [seq tsterm_of_tterm (ts i) | i <- enum [k]]
-  end.
-(* FIXME the coercion doesn't respect the uniformity conditions and thus is never useable. *)
-(*Coercion tsterm_of_tterm : tterm >-> tsterm.*)
-
-Local Fixpoint sig_at_aux (t : tsterm) (revs : [r*]) : option Sigma :=
-  match revs, t with
-  | _, tsnone => None
-  | [::], tsleaf a | [::], tsnode a _ => Some a
-  | _ :: _, tsleaf _ => None
-  | j :: p, tsnode a ts => sig_at_aux (nth tsnone ts j) p
-  end.
-
-Definition sig_at (t : tsterm) (s : [r*]) : option Sigma :=
-  sig_at_aux t (rev s).
-
-Definition has_pos (t : tsterm) (s : [r*]) : bool :=
-  isSome (sig_at t s).
-
-(* TODO
-Lemma has_posP (t : tsterm) (s : [r*]) :
-  reflect
-    (?)
-    (has_pos t s).
-*)
-
-End Tsterms.
-
-Section Runs.
-
-Variable r : nat.
-Variable Sigma : finType.
-
-Fixpoint positions (t : tterm r Sigma) : seq [r.+1*] :=
+Fixpoint positions (t : tterm) : ptree r.+1 :=
   match t with
   | tleaf _ => [:: [::]]
   | tnode _ k ts =>
@@ -435,7 +371,7 @@ Fixpoint positions (t : tterm r Sigma) : seq [r.+1*] :=
       ]
   end.
 
-Lemma positions_tree_like (t : tterm r Sigma) : tree_like (positions t).
+Lemma positions_tree_like (t : tterm) : tree_like (positions t).
 Proof.
   rewrite /tree_like; apply /and3P; split.
   - apply /suffix_closedP; case; first by case: t.
@@ -473,19 +409,251 @@ Proof.
  *)
 Admitted.
 
-Lemma positions_has_pos (t : tterm r Sigma) (s : [r.+1*]) :
-   (s \in positions t) = (has_pos (tsterm_of_tterm t) s).
-Proof.
-Admitted.
-
-Variable state : finType.
-Variable A : tbuta r Sigma state.
-
-Definition tchildren (t : tterm r Sigma) : seq (tterm r Sigma) :=
+Definition tchildren (t : tterm) : seq tterm :=
   match t with
   | tleaf _ => [::]
   | tnode _ k ts => fgraph ts
   end.
+
+(* TODO Lemma tchildren_children *)
+
+End Tterms.
+
+Section Tsterms.
+
+Variable Sigma : finType.
+
+Inductive tsterm : Type :=
+| tsnone : tsterm
+| tsleaf : Sigma -> tsterm
+| tsnode : Sigma -> seq tsterm -> tsterm.
+
+Variable (r : nat).
+
+Fixpoint tsterm_of_tterm (t : tterm r Sigma) : tsterm :=
+  match t with
+  | tleaf a => tsleaf a
+  | tnode a k ts => tsnode a [seq tsterm_of_tterm (ts i) | i <- ord_enum k]
+  end.
+(* FIXME the coercion doesn't respect the uniformity conditions and thus is never useable. *)
+(*Coercion tsterm_of_tterm : tterm >-> tsterm.*)
+
+Local Fixpoint sig_at_aux (t : tsterm) (revs : [r*]) : option Sigma :=
+  match revs, t with
+  | _, tsnone => None
+  | [::], tsleaf a | [::], tsnode a _ => Some a
+  | _ :: _, tsleaf _ => None
+  | j :: p, tsnode a ts => sig_at_aux (nth tsnone ts j) p
+  end.
+
+Definition sig_at (t : tsterm) (s : [r*]) : option Sigma :=
+  sig_at_aux t (rev s).
+
+Definition has_pos (t : tsterm) (s : [r*]) : bool :=
+  isSome (sig_at t s).
+
+End Tsterms.
+
+Lemma positions_has_pos (r : nat) (Sigma : finType) (t : tterm r Sigma)
+     (s : [r.+1*]) :
+   (s \in positions t) = (has_pos (tsterm_of_tterm t) s).
+Proof.
+Admitted.
+
+Section Automata.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+
+Record tbuta : Type := {
+  final : seq state;
+  transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
+}.
+
+Definition buta_size (A : tbuta) : nat :=
+  #|state| + \sum_(k < r.+1) (size (transitions A k)).
+
+Fixpoint reach_at_depth (A : tbuta) (q : state) (t : tterm r Sigma) (i : nat) :
+    bool :=
+  match i, t with
+  | 0, _ => false
+  | n.+1, tleaf a => ([tuple], a, q) \in transitions A ord0
+  | n.+1, tnode a k f =>
+    [exists tr in transitions A k,
+      [&& tr.1.2 == a,
+          tr.2 == q &
+          [forall j : [k], reach_at_depth A (tnth tr.1.1 j) (f j) n]
+      ]
+    ]
+  end.
+
+Lemma reach_at_depth0 (A : tbuta) (q : state) (t : tterm r Sigma) :
+  reach_at_depth A q t 0 = false.
+Proof. by case: t. Qed.
+
+Lemma reach_at_depth_leq (A : tbuta) (q : state) (t : tterm r Sigma)
+      (i j : nat) :
+    i <= j ->
+    reach_at_depth A q t i ->
+  reach_at_depth A q t j.
+Proof.
+  move: i; elim: j => [i | j IH i].
+    by rewrite leqn0 => /eqP ->.
+  case: ltngtP => [||->] //.
+  move=> leij _ reachi.
+  have := IH _ leij reachi => {i IH leij reachi}.
+  case: j; move: q; elim/tterm_nind: t => //=.
+  move=> a k f IH q n /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+  case: n.
+    move: f IH qs qsaq'_tran; case: k => []; case.
+      move=> lt0r1 f _ qs qsaq'_tran _.
+      apply /'exists_and4P => /=; exists (qs, a', q'); split=> //.
+      by apply /forallP => /= [[]].
+    move=> k ltk1r1 f _ qs _.
+    move=> reach0; exfalso; move: reach0; apply /negP; rewrite negb_forall.
+    by apply /existsP => /=; exists ord0; rewrite reach_at_depth0.
+  move=> n /forallP /= reachn1.
+  apply /'exists_and4P => /=; exists (qs, a', q'); split=> //.
+  by apply /forallP => /= j; apply: IH.
+Qed.
+
+Fixpoint reach_eventually (A : tbuta) (q : state) (t : tterm r Sigma) : bool :=
+  match t with
+  | tleaf a => ([tuple], a, q) \in transitions A ord0
+  | tnode a k f =>
+    [exists tr in transitions A k,
+      [&& tr.1.2 == a,
+          tr.2 == q &
+          [forall j : [k], reach_eventually A (tnth tr.1.1 j) (f j)]
+      ]
+    ]
+  end.
+
+Lemma reach_at_depth_eventually (A : tbuta) (q : state) (t : tterm r Sigma) :
+  reflect (exists i : nat, reach_at_depth A q t i) (reach_eventually A q t).
+Proof.
+  apply: (iffP idP) => [|[i]].
+    move: t q; elim/tterm_nind => [a | a k f IH q].
+      by exists 1.
+    move=> /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+    rewrite -/reach_eventually => /forallP /= revent.
+    have rdepth := IH _ _ (revent _) => {IH revent}.
+    set m := \max_(j < k) (xchoose (rdepth j)); exists m.+1.
+    apply /'exists_and4P => /=.
+    exists (qs, a', q'); split=> //.
+    apply /forallP => /= j.
+    by apply: (reach_at_depth_leq _ (xchooseP (rdepth j))); apply: leq_bigmax.
+  move: t q; elim i => [// | n IH]; case => //.
+  move=> a k f q /'exists_and4P /= [[[qs a'] q'] /= [qsaq'_tran a'a q'q]].
+  move=> /forallP /=; rewrite -/reach_at_depth => H.
+  apply /'exists_and4P => /=.
+  exists (qs, a', q'); split => //=.
+  by apply /forallP => /= j; apply: IH; apply: H.
+Qed.
+
+Definition accepts (A : tbuta) (t : tterm r Sigma) : bool :=
+  [exists q in final A, reach_eventually A q t].
+
+Definition transitions_preim (A : tbuta) (q : state) :
+    {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)} :=
+  [ffun k : [r.+1] => [seq tr <- transitions A k | tr.2 == q]].
+
+Definition in_degree_state (A : tbuta) (q : state) : nat :=
+  \sum_(k < r.+1) (size (transitions_preim A q k)).
+
+Definition in_degree (A : tbuta) : nat :=
+  \max_(q in state) (in_degree_state A q).
+
+End Automata.
+
+
+Section Intersection1.
+
+Variable (r : nat).
+Variable (Sig : finType).
+
+Definition restrict (state : finType) (A : tbuta r Sig state) (n : nat)
+    (nler : n < r.+1) : tbuta n Sig state :=
+  {|
+    final := final A;
+    transitions := [ffun k : [n.+1] =>
+      (transitions A (widen_ord nler k))
+    ];
+  |}.
+
+Lemma restrict_self (state : finType) (A : tbuta r Sig state) :
+  A = restrict A (ltnSn r).
+Proof.
+Admitted.
+
+Variables (st1 st2 : finType).
+
+(*   For now the automata are based on the same alphabet and have the same     *)
+(* maximum arity.                                                              *)
+Definition mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
+    (trs2 : seq (k.-tuple st2 * Sig * st2)) :=
+  [seq tr12 <- [seq (tr1, tr2) | tr1 <- trs1, tr2 <- trs2] |
+      tr12.1.1.2 == tr12.2.1.2].
+
+Definition merge
+    (trs1 : {ffun forall k : [r.+1], seq (k.-tuple st1 * Sig * st1)})
+    (trs2 : {ffun forall k : [r.+1], seq (k.-tuple st2 * Sig * st2)})
+  : {ffun forall k : [r.+1], seq (k.-tuple (st1 * st2)%type * Sig * (st1 * st2))}
+  :=
+  [ffun k : [r.+1] =>
+    [seq ([tuple of zip (val tr.1.1.1) (val tr.2.1.1)],
+          tr.1.1.2,
+          (tr.1.2, tr.2.2)
+         ) | tr <- mergeable (trs1 k) (trs2 k)]
+  ].
+
+Definition intersection1 (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2) :
+    tbuta r Sig (prod_finType st1 st2) :=
+  {|
+    final := [seq (f1, f2) | f1 <- (final A1), f2 <- (final A2)];
+    transitions := merge (transitions A1) (transitions A2);
+  |}.
+
+Lemma intersection1_accepts (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2)
+    (t : tterm r Sig) :
+  accepts (intersection1 A1 A2) t = (accepts A1 t) && (accepts A2 t).
+Proof.
+Admitted.
+
+End Intersection1.
+
+Section Intersection.
+
+Variables (r1 r2 : nat).
+Variables (Sig : finType).
+Variables (st1 st2 : finType).
+
+Definition intersection (A1 : tbuta r1 Sig st1) (A2 : tbuta r2 Sig st2) :
+    tbuta (minn r1 r2) Sig (prod_finType st1 st2) :=
+  intersection1 (restrict A1 (geq_minl r1 r2)) (restrict A2 (geq_minr r1 r2)).
+
+Lemma intersection_accepts (A1 : tbuta r1 Sig st1) (A2 : tbuta r2 Sig st2)
+    (t : tterm (minn r1 r2) Sig) :
+  accepts (intersection A1 A2) t =
+    (accepts (restrict A1 (geq_minl r1 r2)) t)
+    && (accepts (restrict A2 (geq_minr r1 r2)) t).
+Proof.
+  by rewrite intersection1_accepts.
+Qed.
+
+End Intersection.
+
+
+(*******************************************************************************)
+(* Below are old undocumented definitions that might be useful at some point   *)
+
+Section Runs.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+Variable A : tbuta r Sigma state.
 
 (* FIXME *)
 Fail Record run := {
@@ -499,58 +667,7 @@ Fail Record run := {
     ) \in transitions A (inord (size (children (positions rterm) s)));
 }.
 
-
-
 End Runs.
-
-Section Intersection.
-
-Variable (r : nat).
-Variable (Sig : finType).
-
-Definition restrict (state : finType)
-    (A : tbuta r Sig state) (n : [r.+1]) : tbuta n Sig state :=
-  {|
-    final := final A;
-    transitions := [ffun k : [n.+1] =>
-      (transitions A (widen_ord (ltn_ord n) k))
-    ];
-  |}.
-
-Variables (st1 st2 : finType).
-
-(* For now the automata are based on the same alphabet and have the same maximum arity *)
-Definition mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
-    (trs2 : seq (k.-tuple st2 * Sig * st2)) :=
-  [seq tr12 <- [seq (tr1, tr2) | tr1 <- trs1, tr2 <- trs2] |
-      tr12.1.1.2 == tr12.2.1.2].
-
-Definition merge
-    (trs1 : {ffun forall k : [r.+1], seq (k.-tuple st1 * Sig * st1)})
-    (trs2 : {ffun forall k : [r.+1], seq (k.-tuple st2 * Sig * st2)})
-  : {ffun forall k : [r.+1], seq (k.-tuple (st1 * st2)%type * Sig * (st1 * st2))}
-   :=
-  [ffun k : [r.+1] =>
-    [seq ([tuple of zip (val tr.1.1.1) (val tr.2.1.1)],
-          tr.1.1.2,
-          (tr.1.2, tr.2.2)
-         ) | tr <- mergeable (trs1 k) (trs2 k)]
-  ].
-
-Definition intersection (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2) :
-    tbuta r Sig (prod_finType st1 st2) :=
-  {|
-    final := [seq (f1, f2) | f1 <- (final A1), f2 <- (final A2)];
-    transitions := merge (transitions A1) (transitions A2);
-  |}.
-
-Lemma intersection_accepts (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2)
-    (t : tterm r Sig) :
-  accepts (intersection A1 A2) t = (accepts A1 t) && (accepts A2 t).
-Proof.
-Admitted.
-
-End Intersection.
 
 Section Terms.
 
@@ -652,7 +769,6 @@ Proof.
   case: {2}(rcons s i) => [/eqP | j p eqrconsjp].
     by rewrite rcons_nil.
   rewrite eqrconsjp /=.
-
 Admitted.
 
 (* FIXME This is silly because pos could have type tree *)
