@@ -257,7 +257,7 @@ Record tree := Tree {
 }.
 
 (* p is a parent of q                                                          *)
-Definition is_parent (p q : [r*]) : bool := parent p == q.
+Definition is_parent (p q : [r*]) : bool := (parent q == p) && (q != [::]).
 
 (* p is a child of q                                                           *)
 Definition is_child (p q : [r*]) : bool := is_parent q p.
@@ -308,6 +308,19 @@ Qed.
 Definition children  (U : ptree r) (p : [r*]) : seq [r*] :=
   [seq s <- U | is_parent p s].
 
+Definition arity (U : ptree r) (p : [r*]) : nat :=
+  size (children U p).
+
+
+Definition children_from_arity (p : [r.+1*]) (k : nat) :=
+  [seq (inord i) :: p | i <- iota 0 k].
+
+Definition children_from_arity_ord (p : [r*]) (k : [r]) : seq [r*] :=
+  [seq (widen_ord (ltnW (ltn_ord k)) i) :: p | i <- ord_enum k].
+
+Definition children_from_arity_tuple (p : [r*]) (k : [r]) : k.-tuple [r*] :=
+  [tuple (widen_ord (ltnW (ltn_ord k)) i) :: p | i < k].
+
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
   [seq s <- U | is_ancestor p s].
 
@@ -327,6 +340,70 @@ Lemma connected_correct (S : ptree r) (p : [r*]) :
 Proof. by case: p. Qed.
 
 End Strings.
+
+Definition arity2 (r : nat) (U : ptree r.+1) (p : [r.+1*]) : nat :=
+  if children U p is [::] then 0 else
+    (\max_(c <- children U p) (head ord0 c)).+1.
+
+Lemma arity12 (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+    tree_like U ->
+  arity U p = arity2 U p.
+Proof.
+  move=> /and3P [scU /well_numberedP wnU uniqU].
+  rewrite /arity /arity2.
+  set cs := children U p.
+  elim: cs => [// | j s IH /=].
+  congr S; rewrite IH big_cons.
+Admitted.
+
+Lemma arity_tree_like (r : nat) (U : ptree r) (p : [r*]) :
+    tree_like U ->
+  arity U p < r.
+Proof.
+Admitted.
+
+Lemma children_arityP (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+    tree_like U ->
+  perm_eq (children U p) (children_from_arity p (arity U p)).
+Proof.
+  move=> /and3P [scU /well_numberedP wnU uniqU].
+  rewrite /children /children_from_arity.
+  apply: uniq_perm; first by apply: filter_uniq.
+    rewrite map_inj_in_uniq ?iota_uniq //= => n m.
+    rewrite 2!mem_iota add0n => /andP [_ nlta] /andP [_ mlta] /eqP inpeqimp.
+    have : @inord r n = @inord r m :> nat.
+      congr val; move: inpeqimp.
+      by rewrite eqseq_cons => /andP [/eqP].
+    admit.
+    (*
+    rewrite inordK; last by rewrite (ltn_trans nlta) // arity_tree_like.
+    by rewrite inordK; last by rewrite (ltn_trans mlta) // arity_tree_like.
+    *)
+  move=> /= s.
+  apply /(@sameP (s \in [seq s0 <- U | is_parent p s0])); first by apply: idP.
+  rewrite mem_filter.
+  apply: (iffP idP).
+    move=> /mapP /= [i]; rewrite mem_iota add0n => /andP [_ ilta] ->.
+    apply /andP; split.
+      by rewrite /is_parent andbT /parent /= drop0.
+    admit.
+  rewrite /is_parent.
+  case: s; first by rewrite andbF.
+  move=> j s.
+  rewrite parent_cons => /andP [/andP [/eqP -> _] jpinU].
+  apply /mapP => /=.
+  exists j; last by rewrite inord_val.
+  rewrite mem_iota; apply /andP; split => //.
+  rewrite add0n /arity /children.
+  rewrite size_filter.
+  case: ltnP => // aUplej.
+  (*
+  set a := Ordinal (arity_tree_like U p).
+  have := wnU _ _ jpinU a.
+  *)
+
+
+Admitted.
 
 Section Tterms.
 
@@ -355,12 +432,19 @@ Fixpoint tterm_nind (P : tterm -> Prop)
   | tnode a k f => Pnode a k f (fun j => tterm_nind Pleaf Pnode (f j))
   end.
 
+Definition head_sig (t : tterm) : Sigma :=
+  match t with
+  | tleaf a => a
+  | tnode a _ _ => a
+  end.
+
 Fixpoint tpos (t : tterm) : ttree :=
   match t with
   | tleaf _ => leaf
   | tnode _ k f => @node k (finfun (tpos \o f))
   end.
 Coercion tpos : tterm >-> ttree.
+
 Fixpoint positions (t : tterm) : ptree r.+1 :=
   match t with
   | tleaf _ => [:: [::]]
@@ -416,6 +500,7 @@ Definition tchildren (t : tterm) : seq tterm :=
   end.
 
 (* TODO Lemma tchildren_children *)
+
 
 End Tterms.
 
@@ -565,8 +650,103 @@ Definition in_degree_state (A : tbuta) (q : state) : nat :=
 Definition in_degree (A : tbuta) : nat :=
   \max_(q in state) (in_degree_state A q).
 
+Definition deterministic (A : tbuta) : bool :=
+  [forall k : [r.+1], forall qs : k.-tuple state, forall a : Sigma,
+    count (fun tr => tr.1 == (qs, a)) (transitions A k) <= 1
+  ].
+
 End Automata.
 
+Section Runs.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+Variable A : tbuta r Sigma state.
+Variable t : tterm r Sigma.
+
+Definition wf_run (rho : [r.+1*] -> state) : bool :=
+ all
+  (fun p =>
+    [forall (k : [r.+1] | k == arity (positions t) p :> nat),
+      (
+        [tuple of map rho (children_from_arity_tuple p k)],
+        head_sig t, (*FIXME this should be t(p) not t([::])*)
+        rho p
+      ) \in transitions A k
+    ]
+  )
+  (positions t).
+
+Record trun := {
+  trho : [r.+1*] -> state;
+  _ : wf_run trho
+}.
+
+Definition trun_size (rn : trun) : nat :=
+  size (positions t).
+
+Definition reaches_state (rn : trun) (q : state) : bool :=
+  trho rn [::] == q.
+
+Definition is_accepting (rn : trun) : bool :=
+  has (reaches_state rn) (final A).
+
+Definition reaches_transition (rn : trun) (k : [r.+1])
+    (tr : k.-tuple state * Sigma * state) : bool :=
+  (k == arity (positions t) [::] :> nat)
+    &&
+    (tr == (
+      [tuple trho rn [:: widen_ord (ltnW (ltn_ord k)) i] | i < k],
+      (* the above line should be the same as using children_from_arity_tuple *)
+      head_sig t,
+      trho rn [::]
+    )).
+
+End Runs.
+
+Definition unambiguous (r : nat) (Sigma state : finType)
+  (A : tbuta r Sigma state) : Prop :=
+  forall (t : tterm r Sigma) (rho1 rho2 : [r.+1*] -> state),
+    wf_run A t rho1 -> wf_run A t rho2 -> {in positions t, rho1 =1 rho2}.
+
+Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
+  (A : tbuta r Sigma state) :
+  deterministic A -> unambiguous A.
+Proof.
+  rewrite /deterministic /unambiguous.
+  move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
+  move=> /allP /= wf1 /allP /= wf2 p pinpos.
+  set k := Ordinal (arity_tree_like p (positions_tree_like t)).
+  have /'forall_implyP /= wf1p := wf1 p pinpos.
+  have := wf1p k (eq_refl _) => {wf1 wf1p}.
+  have /'forall_implyP /= wf2p := wf2 p pinpos.
+  have := wf2p k (eq_refl _) => {wf2 wf2p}.
+  set rho1c := [tuple of [seq rho1 i | i <- _]] : k.-tuple state.
+  set rho2c := [tuple of [seq rho2 i | i <- _]].
+  have <- : rho1c = rho2c.
+    (* TODO proving this will require a bottom-up induction principle *)
+    admit.
+  have := deterministicA k rho1c (head_sig t) => {deterministicA rho2c}.
+  set prd := fun tr : (k.-tuple state * Sigma * state) => _.
+  have [/eqP // | neqrho12p] := boolP (rho1 p == rho2 p).
+  set tr1 := (_, _, rho1 p) : (k.-tuple state * Sigma * state).
+  set tr2 := (_, _, rho2 p) : (k.-tuple state * Sigma * state).
+  have prd1 : prd tr1 by rewrite /prd.
+  have prd2 : prd tr2 by rewrite /prd.
+  move=> countlt1 tr2intr tr1intr.
+  have transrm2 := perm_to_rem tr2intr.
+  have tr1inrm : tr1 \in (tr2 :: rem tr2 (transitions A k)).
+    by rewrite -(perm_mem transrm2).
+  have transrm1 := perm_to_rem tr1inrm => {tr1inrm}.
+  have /permP count_tran := perm_trans transrm2 transrm1 => {transrm1 transrm2}.
+  move: countlt1; rewrite (count_tran prd) /= prd1 add1n.
+  have -> /= : tr2 == tr1 = false.
+    apply /eqP; rewrite /tr1 /tr2.
+    move: neqrho12p => /eqP neqrho12p /pair_equal_spec [_ eqrho12p].
+    by apply: neqrho12p.
+  by rewrite prd2 add1n ltnS ltn0.
+Admitted.
 
 Section Intersection1.
 
