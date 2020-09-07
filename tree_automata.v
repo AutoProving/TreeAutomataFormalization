@@ -82,18 +82,6 @@ Unset Printing Implicit Defensive.
 (*           tpos t == the ttree obtained from t by forgeting the labels       *)
 (*      positions t == the ptree corresponding to t                            *)
 (*      tchildren t == a list of the children of t as tterms                   *)
-(*     tsterm Sigma == structural terms based on seq instead of tuple with     *)
-(*                     constructors                                            *)
-(*                     - tsnone                                                *)
-(*                     - tsleaf a                                              *)
-(*                     - tsnode a ts                                           *)
-(*                     where (a : Sigma) is a label and (ts : seq tsterm) is a *)
-(*                     list of children                                        *)
-(*      tsterm_of_tterm t == the tsterm corresponding to t                     *)
-(*      sig_at t' s == if s is a position in t', this outputs Some a where a   *)
-(*                     is the label found at that position; otherwise outputs  *)
-(*                     None                                                    *)
-(*     has_pos t' s == s is a position in t'                                   *)
 (*                                                                             *)
 (*                                  AUTOMATA                                   *)
 (*    tbuta r Sigma state == bottom-up tree automata with the following fields *)
@@ -209,6 +197,10 @@ Proof.
   by apply: suffix_closed_correct => //; rewrite in_cons eqxx.
 Qed.
 
+
+Definition wdord (k : [r]) (j : [k]) : [r] :=
+  widen_ord (ltnW (ltn_ord k)) j.
+
 Definition subon (j : [r]) (n : nat) : [r].
 Proof.
   refine (@Ordinal r (j - n) _).
@@ -316,10 +308,10 @@ Definition children_from_arity (p : [r.+1*]) (k : nat) :=
   [seq (inord i) :: p | i <- iota 0 k].
 
 Definition children_from_arity_ord (p : [r*]) (k : [r]) : seq [r*] :=
-  [seq (widen_ord (ltnW (ltn_ord k)) i) :: p | i <- ord_enum k].
+  [seq (wdord i) :: p | i <- ord_enum k].
 
 Definition children_from_arity_tuple (p : [r*]) (k : [r]) : k.-tuple [r*] :=
-  [tuple (widen_ord (ltnW (ltn_ord k)) i) :: p | i < k].
+  [tuple (wdord i) :: p | i < k].
 
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
   [seq s <- U | is_ancestor p s].
@@ -405,6 +397,7 @@ Proof.
 
 Admitted.
 
+
 Section Tterms.
 
 Variable r : nat.
@@ -449,11 +442,52 @@ Fixpoint positions (t : tterm) : ptree r.+1 :=
   match t with
   | tleaf _ => [:: [::]]
   | tnode _ k ts =>
-      [::] :: [seq rcons p (widen_ord (ltnW (ltn_ord k)) j) |
+      [::] :: [seq rcons p (wdord j) |
         j <- ord_enum k,
         p <- positions (ts j)
       ]
   end.
+
+Fixpoint positions_sig (t : tterm) : seq ([r.+1*] * Sigma) :=
+  match t with
+  | tleaf a => [:: ([::], a)]
+  | tnode a k ts =>
+      ([::], a) :: [seq (rcons pa.1 (wdord j), pa.2) |
+        j <- ord_enum k,
+        pa <- positions_sig (ts j)
+      ]
+  end.
+
+Definition sig_at (d : Sigma) (t : tterm) (p : [r.+1*]) : Sigma :=
+  (nth ([::], d)
+    (positions_sig t)
+    (find (fun pa => pa.1 == p) (positions_sig t))
+  ).2.
+
+Lemma positions_positions_sig (t : tterm) :
+  positions t = [seq pa.1 | pa <- positions_sig t].
+Proof.
+  elim/tterm_nind: t => [// | a k f IH /=]; congr cons.
+  rewrite map_allpairs /=.
+  congr flatten; apply: eq_map => j.
+  by rewrite IH -map_comp; apply: eq_map => [[]].
+Qed.
+
+Lemma sig_at_default (d d' : Sigma) (t : tterm) :
+  {in positions t, sig_at d t =1 sig_at d' t}.
+Proof.
+  rewrite /sig_at /=.
+  move=> p /nthP /= H; have := H [::] => {H} [[i iltsize] ithisp].
+  set f := fun pa => _.
+  congr snd.
+  apply: set_nth_default; rewrite -has_find.
+  move: iltsize ithisp; rewrite positions_positions_sig => iltsize.
+  erewrite nth_map; last by move: iltsize; rewrite size_map.
+  move=> nthpossig; apply /hasP => /=.
+  exists (nth ([::], d) (positions_sig t) i).
+    by apply: mem_nth; move: iltsize; rewrite size_map.
+  by rewrite /f; apply /eqP; apply: nthpossig.
+Qed.
 
 Lemma positions_tree_like (t : tterm) : tree_like (positions t).
 Proof.
@@ -503,47 +537,6 @@ Definition tchildren (t : tterm) : seq tterm :=
 
 
 End Tterms.
-
-Section Tsterms.
-
-Variable Sigma : finType.
-
-Inductive tsterm : Type :=
-| tsnone : tsterm
-| tsleaf : Sigma -> tsterm
-| tsnode : Sigma -> seq tsterm -> tsterm.
-
-Variable (r : nat).
-
-Fixpoint tsterm_of_tterm (t : tterm r Sigma) : tsterm :=
-  match t with
-  | tleaf a => tsleaf a
-  | tnode a k ts => tsnode a [seq tsterm_of_tterm (ts i) | i <- ord_enum k]
-  end.
-(* FIXME the coercion doesn't respect the uniformity conditions and thus is never useable. *)
-(*Coercion tsterm_of_tterm : tterm >-> tsterm.*)
-
-Local Fixpoint sig_at_aux (t : tsterm) (revs : [r*]) : option Sigma :=
-  match revs, t with
-  | _, tsnone => None
-  | [::], tsleaf a | [::], tsnode a _ => Some a
-  | _ :: _, tsleaf _ => None
-  | j :: p, tsnode a ts => sig_at_aux (nth tsnone ts j) p
-  end.
-
-Definition sig_at (t : tsterm) (s : [r*]) : option Sigma :=
-  sig_at_aux t (rev s).
-
-Definition has_pos (t : tsterm) (s : [r*]) : bool :=
-  isSome (sig_at t s).
-
-End Tsterms.
-
-Lemma positions_has_pos (r : nat) (Sigma : finType) (t : tterm r Sigma)
-     (s : [r.+1*]) :
-   (s \in positions t) = (has_pos (tsterm_of_tterm t) s).
-Proof.
-Admitted.
 
 Section Automata.
 
@@ -665,22 +658,30 @@ Variable state : finType.
 Variable A : tbuta r Sigma state.
 Variable t : tterm r Sigma.
 
-Definition wf_run (rho : [r.+1*] -> state) : bool :=
- all
-  (fun p =>
-    [forall (k : [r.+1] | k == arity (positions t) p :> nat),
-      (
-        [tuple of map rho (children_from_arity_tuple p k)],
-        head_sig t, (*FIXME this should be t(p) not t([::])*)
-        rho p
-      ) \in transitions A k
-    ]
-  )
-  (positions t).
+Definition wf_run (d : Sigma) (rho : [r.+1*] -> state) : bool :=
+  all
+    (fun p =>
+      [forall (k : [r.+1] | k == arity (positions t) p :> nat),
+        (
+          [tuple of map rho (children_from_arity_tuple p k)],
+          sig_at d t p,
+          rho p
+        ) \in transitions A k
+      ]
+    )
+    (positions t).
+
+Lemma wf_run_default (d d' : Sigma) (rho : [r.+1*] -> state) :
+  wf_run d rho = wf_run d' rho.
+Proof.
+  rewrite /wf_run.
+  apply: eq_in_all => p pinpos.
+  by rewrite (sig_at_default d d' pinpos).
+Qed.
 
 Record trun := {
   trho : [r.+1*] -> state;
-  _ : wf_run trho
+  _ : forall d, wf_run d trho
 }.
 
 Definition trun_size (rn : trun) : nat :=
@@ -697,7 +698,7 @@ Definition reaches_transition (rn : trun) (k : [r.+1])
   (k == arity (positions t) [::] :> nat)
     &&
     (tr == (
-      [tuple trho rn [:: widen_ord (ltnW (ltn_ord k)) i] | i < k],
+      [tuple trho rn [:: wdord i] | i < k],
       (* the above line should be the same as using children_from_arity_tuple *)
       head_sig t,
       trho rn [::]
@@ -706,13 +707,13 @@ Definition reaches_transition (rn : trun) (k : [r.+1])
 End Runs.
 
 Definition unambiguous (r : nat) (Sigma state : finType)
-  (A : tbuta r Sigma state) : Prop :=
+  (A : tbuta r Sigma state) (d : Sigma) : Prop :=
   forall (t : tterm r Sigma) (rho1 rho2 : [r.+1*] -> state),
-    wf_run A t rho1 -> wf_run A t rho2 -> {in positions t, rho1 =1 rho2}.
+    wf_run A t d rho1 -> wf_run A t d rho2 -> {in positions t, rho1 =1 rho2}.
 
 Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
-  (A : tbuta r Sigma state) :
-  deterministic A -> unambiguous A.
+  (A : tbuta r Sigma state) (d : Sigma) :
+  deterministic A -> unambiguous A d.
 Proof.
   rewrite /deterministic /unambiguous.
   move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
@@ -727,7 +728,7 @@ Proof.
   have <- : rho1c = rho2c.
     (* TODO proving this will require a bottom-up induction principle *)
     admit.
-  have := deterministicA k rho1c (head_sig t) => {deterministicA rho2c}.
+  have := deterministicA k rho1c (sig_at d t p) => {deterministicA rho2c}.
   set prd := fun tr : (k.-tuple state * Sigma * state) => _.
   have [/eqP // | neqrho12p] := boolP (rho1 p == rho2 p).
   set tr1 := (_, _, rho1 p) : (k.-tuple state * Sigma * state).
@@ -997,3 +998,68 @@ Fixpoint reach (A : pbuta) (k : [m.+1]) (t : pterm k Sigma)
               ]
             ]
   end.
+
+End Automata.
+
+(*     tsterm Sigma == structural terms based on seq instead of tuple with     *)
+(*                     constructors                                            *)
+(*                     - tsnone                                                *)
+(*                     - tsleaf a                                              *)
+(*                     - tsnode a ts                                           *)
+(*                     where (a : Sigma) is a label and (ts : seq tsterm) is a *)
+(*                     list of children                                        *)
+(*      tsterm_of_tterm t == the tsterm corresponding to t                     *)
+(*      sig_at t' s == if s is a position in t', this outputs Some a where a   *)
+(*                     is the label found at that position; otherwise outputs  *)
+(*                     None                                                    *)
+(*     has_pos t' s == s is a position in t'                                   *)
+
+Section Tsterms.
+
+Variable Sigma : finType.
+
+Inductive tsterm : Type :=
+| tsnone : tsterm
+| tsleaf : Sigma -> tsterm
+| tsnode : Sigma -> seq tsterm -> tsterm.
+
+Variable (r : nat).
+
+Fixpoint tsterm_of_tterm (t : tterm r Sigma) : tsterm :=
+  match t with
+  | tleaf a => tsleaf a
+  | tnode a k ts => tsnode a [seq tsterm_of_tterm (ts i) | i <- ord_enum k]
+  end.
+
+(*
+Print Finfun.
+Print tterm.
+Fixpoint tterm_of_tsterm (t' : tsterm) : option (tterm r Sigma) :=
+  match t' with
+  | tsnone => None
+  | tsleaf a => Some (tleaf r a)
+  | tsnode a w => Some (tnode a (Finfun (in_tuple (map tterm_of_tsterm w))))
+  end.
+*)
+
+Local Fixpoint ts_sig_at_aux (t : tsterm) (revs : [r*]) : option Sigma :=
+  match revs, t with
+  | _, tsnone => None
+  | [::], tsleaf a | [::], tsnode a _ => Some a
+  | _ :: _, tsleaf _ => None
+  | j :: p, tsnode a ts => ts_sig_at_aux (nth tsnone ts j) p
+  end.
+
+Definition ts_sig_at (t : tsterm) (s : [r*]) : option Sigma :=
+  ts_sig_at_aux t (rev s).
+
+Definition ts_has_pos (t : tsterm) (s : [r*]) : bool :=
+  isSome (ts_sig_at t s).
+
+End Tsterms.
+
+Lemma positions_has_pos (r : nat) (Sigma : finType) (t : tterm r Sigma)
+     (s : [r.+1*]) :
+   (s \in positions t) = (ts_has_pos (tsterm_of_tterm t) s).
+Proof.
+Admitted.
