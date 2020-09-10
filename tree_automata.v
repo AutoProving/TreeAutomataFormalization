@@ -125,6 +125,9 @@ Unset Printing Implicit Defensive.
 
 
 
+Lemma addnmBm (n m : nat) : n + m - m = n.
+Proof. by rewrite -{2}[m]/(0 + m) subnDr subn0. Qed.
+
 
 
 (*   Unlike in the paper specification, here [r] is the finite set of numbers  *)
@@ -297,12 +300,23 @@ Proof.
   by apply: map_f; rewrite mem_iota.
 Qed.
 
+Lemma is_ancestorP (U : ptree r) (p q : [r*]) :
+  reflect
+    (exists s : [r*], q = s ++ p)
+    (is_ancestor p q).
+Proof.
+  apply: (iffP idP).
+    move=> /eqP ->.
+    exists (take (size q - size p) q).
+    by rewrite cat_take_drop.
+  by move=> [s ->]; rewrite /is_ancestor size_cat addnmBm drop_size_cat.
+Qed.
+
 Definition children  (U : ptree r) (p : [r*]) : seq [r*] :=
   [seq s <- U | is_parent p s].
 
 Definition arity (U : ptree r) (p : [r*]) : nat :=
   size (children U p).
-
 
 Definition children_from_arity (p : [r.+1*]) (k : nat) :=
   [seq (inord i) :: p | i <- iota 0 k].
@@ -315,6 +329,41 @@ Definition children_from_arity_tuple (p : [r*]) (k : [r]) : k.-tuple [r*] :=
 
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
   [seq s <- U | is_ancestor p s].
+
+Definition descendants_subtree (U : ptree r) (p : [r*]) : ptree r :=
+  [seq take (size s - size p) s| s <- descendants U p].
+
+Lemma descendants_uniq (U : ptree r) (p : [r*]) :
+  uniq U -> uniq (descendants U p).
+Proof.
+  by move=> uniqU; rewrite filter_uniq.
+Qed.
+
+Lemma descendantsP (U : ptree r) (p : [r*]) (d : [r*]) :
+  reflect
+    (exists s : [r*], d = s ++ p /\ d \in U)
+    (d \in descendants U p).
+Proof.
+  rewrite /descendants mem_filter.
+  apply: (iffP idP).
+    by move=> /andP [/(is_ancestorP U) [s seq] dinU]; exists s.
+  move=> [s [deqsp ->]].
+  by rewrite andbT; apply /(is_ancestorP U); exists s.
+Qed.
+
+Lemma descendants_subtree_tree_like (U : ptree r) (p : [r*]) :
+    tree_like U ->
+    p \in U ->
+  tree_like (descendants_subtree U p).
+Proof.
+  move=> /and3P [scU wnU uniqU] pinU.
+  apply /and3P; split.
+  - admit.
+  - admit.
+  - rewrite map_inj_in_uniq ?descendants_uniq //.
+    move=> /= d1 d2 /descendantsP [s1 [-> _]] /descendantsP [s2 [-> _]].
+    by rewrite 2!size_cat 2!addnmBm 2!take_cat 2!ltnn 2!subnn take0 2!cats0 =>->.
+Admitted.
 
 Definition is_leaf (U : ptree r) (s : [r*]) :=
   all (fun p => ~~ (is_strict_ancestor s p)) U.
@@ -537,6 +586,35 @@ Definition tchildren (t : tterm) : seq tterm :=
 
 
 End Tterms.
+
+Section ToTtrees.
+
+Variable r : nat.
+
+Definition subtrees_of_ptree (U : ptree r.+1) : seq ([r.+1] * ptree r.+1) :=
+  [seq (head ord0 p, descendants_subtree U p) | p <- [seq u <- U | size u == 1]].
+
+Definition subtrees_of_ptree_sorted (U : ptree r.+1) :=
+  [seq np.2 |
+    np <- sort
+            (fun (np mq : [r.+1] * ptree r.+1) => np.1 <= mq.1)
+            (subtrees_of_ptree U)
+  ].
+
+Lemma size_take_ord (T : Type) (w : seq T) :
+  size (take r w) <= r.
+Proof. by rewrite size_take; case: ltnP. Qed.
+
+(* FIXME it doesn't typecheck, but even if it did, it wouldn't accept that it terminates *)
+Fail Fixpoint ttree_of_ptree (U : ptree r.+1) : ttree r :=
+  let subs := subtrees_of_ptree_sorted U in
+  if subs is [::] then leaf r
+  else
+    @node r
+      (@Ordinal r.+1 (size (take r (map ttree_of_ptree subs))) (size_take_ord (map ttree_of_ptree subs)))
+      (@Finfun (ordinal_finType r.+1) _ (in_tuple (take r (map ttree_of_ptree subs)))).
+
+End ToTtrees.
 
 Section Automata.
 
