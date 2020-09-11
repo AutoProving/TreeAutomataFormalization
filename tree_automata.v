@@ -2,6 +2,8 @@ Set Warnings "-notation-overridden".
 From mathcomp Require Import all_ssreflect.
 Set Warnings "notation-overridden".
 
+Require Import Coq.Program.Wf.
+
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -204,6 +206,9 @@ Qed.
 Definition wdord (k : [r]) (j : [k]) : [r] :=
   widen_ord (ltnW (ltn_ord k)) j.
 
+Definition maxo (m n : [r]) : [r] :=
+  if m < n then n else m.
+
 Definition subon (j : [r]) (n : nat) : [r].
 Proof.
   refine (@Ordinal r (j - n) _).
@@ -328,7 +333,7 @@ Definition children_from_arity_tuple (p : [r*]) (k : [r]) : k.-tuple [r*] :=
   [tuple (wdord i) :: p | i < k].
 
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
-  [seq s <- U | is_ancestor p s].
+  filter (is_ancestor p) U.
 
 Definition descendants_subtree (U : ptree r) (p : [r*]) : ptree r :=
   [seq take (size s - size p) s| s <- descendants U p].
@@ -455,6 +460,36 @@ Variable r : nat.
 Inductive ttree : Type :=
 | leaf : ttree
 | node : forall k : [r.+1], ttree^k -> ttree.
+
+Definition tarity (t : ttree) : [r.+1] :=
+  match t with
+  | leaf => ord0
+  | node k _ => k
+  end.
+
+Fixpoint teq (t1 t2 : ttree) : bool :=
+  match t1, t2 with
+  | leaf, leaf => true
+  | leaf, node _ _  | node _ _, leaf => false
+  | node k1 f1, node k2 f2 => (k1 == k2) &&
+      [forall i : [minn k1 k2],
+          teq
+            (f1 (widen_ord (geq_minl k1 k2) i))
+            (f2 (widen_ord (geq_minr k1 k2) i))
+      ]
+  end.
+Notation "t1 ==t t2" := (teq t1 t2) (at level 70).
+
+Fixpoint tsub (s t : ttree) : bool :=
+  match s, t with
+  | leaf, leaf => true
+  | leaf, node _ _ => false
+  | node _ _, leaf => false
+  | node _ _ as sn, node tk tf as tn => (sn ==t tn) ||
+      [exists i : [tk], tsub sn (tf i)]
+  end.
+Notation "s \tin t" := (tsub s t) (at level 70).
+
 
 Variable Sigma : finType.
 
@@ -591,28 +626,51 @@ Section ToTtrees.
 
 Variable r : nat.
 
-Definition subtrees_of_ptree (U : ptree r.+1) : seq ([r.+1] * ptree r.+1) :=
-  [seq (head ord0 p, descendants_subtree U p) | p <- [seq u <- U | size u == 1]].
-
-Definition subtrees_of_ptree_sorted (U : ptree r.+1) :=
-  [seq np.2 |
-    np <- sort
-            (fun (np mq : [r.+1] * ptree r.+1) => np.1 <= mq.1)
-            (subtrees_of_ptree U)
+Definition subtrees_of_ptree (U : ptree r.+1) (k : [r.+1]) :
+    {ffun [k] -> ptree r.+1} :=
+  [ffun i : [k] =>
+    descendants_subtree U [:: wdord i]
   ].
 
-Lemma size_take_ord (T : Type) (w : seq T) :
-  size (take r w) <= r.
-Proof. by rewrite size_take; case: ltnP. Qed.
-
-(* FIXME it doesn't typecheck, but even if it did, it wouldn't accept that it terminates *)
-Fail Fixpoint ttree_of_ptree (U : ptree r.+1) : ttree r :=
-  let subs := subtrees_of_ptree_sorted U in
-  if subs is [::] then leaf r
+Definition root_arity (U : ptree r.+1) : [r.+1] :=
+  if [::] \in U then
+    \big[@maxo r.+1/ord0]_(i <- [seq head ord0 p | p <- U & size p == 1]) i
   else
-    @node r
-      (@Ordinal r.+1 (size (take r (map ttree_of_ptree subs))) (size_take_ord (map ttree_of_ptree subs)))
-      (@Finfun (ordinal_finType r.+1) _ (in_tuple (take r (map ttree_of_ptree subs)))).
+    ord0.
+
+Lemma subtrees_of_ptree_size (U : ptree r.+1) (i : [root_arity U]) :
+    [::] <> U ->
+  size (subtrees_of_ptree U (root_arity U) i) < size U.
+Proof.
+  move=> eptyneqU.
+  rewrite /subtrees_of_ptree ffunE size_map.
+  move: i; rewrite /root_arity.
+  case: ifP; last by move=> _ [].
+  move=> eptyinU /= i; rewrite /descendants size_filter.
+  have := count_size (is_ancestor [:: wdord i]) U.
+  rewrite leq_eqVlt => /orP [| //].
+  rewrite -all_count => allancestor; exfalso.
+  move: allancestor; apply /negP; apply /allPn => /=.
+  by exists [::].
+Qed.
+
+Program Fixpoint ttree_of_ptree (U : ptree r.+1) {measure (size U)}
+    : ttree r :=
+  match U with
+  | [::] | [:: [::]] => leaf r
+  | V => node [ffun i : [root_arity V] =>
+      ttree_of_ptree (subtrees_of_ptree V (root_arity V) i)
+    ]
+  end.
+Next Obligation.
+  by apply /ltP; rewrite subtrees_of_ptree_size.
+Qed.
+Next Obligation.
+  by split.
+Qed.
+Next Obligation.
+  by split.
+Qed.
 
 End ToTtrees.
 
@@ -748,6 +806,7 @@ Definition wf_run (d : Sigma) (rho : [r.+1*] -> state) : bool :=
       ]
     )
     (positions t).
+
 
 Lemma wf_run_default (d d' : Sigma) (rho : [r.+1*] -> state) :
   wf_run d rho = wf_run d' rho.
@@ -1061,6 +1120,7 @@ Definition tasize (A : pbuta) : nat :=
   #|state| + \sum_(n < m.+1) (size (trans A n)).
 
 (* The term (build a ts) reaches state q in depth at most i. *)
+(*
 Fixpoint reach (A : pbuta) (k : [m.+1]) (t : pterm k Sigma)
     (q : state) (i : nat) : bool :=
   let (a, ts) := break_pterm t in
@@ -1076,6 +1136,7 @@ Fixpoint reach (A : pbuta) (k : [m.+1]) (t : pterm k Sigma)
               ]
             ]
   end.
+*)
 
 End Automata.
 
@@ -1141,3 +1202,31 @@ Lemma positions_has_pos (r : nat) (Sigma : finType) (t : tterm r Sigma)
    (s \in positions t) = (ts_has_pos (tsterm_of_tterm t) s).
 Proof.
 Admitted.
+
+Section Psubtrees.
+
+Variable r : nat.
+
+Definition psubtrees_of_ptree (U : ptree r.+1) : seq ([r.+1] * ptree r.+1) :=
+  [seq (head ord0 p, descendants_subtree U p) | p <- [seq u <- U | size u == 1]].
+
+Definition psubtrees_of_ptree_sorted (U : ptree r.+1) :=
+  [seq np.2 |
+    np <- sort
+            (fun (np mq : [r.+1] * ptree r.+1) => np.1 <= mq.1)
+            (psubtrees_of_ptree U)
+  ].
+
+Lemma size_take_ord (T : Type) (w : seq T) :
+  size (take r w) <= r.
+Proof. by rewrite size_take; case: ltnP. Qed.
+
+Fail Fixpoint ttree_of_ptree (U : ptree r.+1) : ttree r :=
+  let subs := psubtrees_of_ptree_sorted U in
+  if subs is [::] then leaf r
+  else
+    @node r
+      (@Ordinal r.+1 (size (take r (map ttree_of_ptree subs))) (size_take_ord (map ttree_of_ptree subs)))
+      (@Finfun (ordinal_finType r.+1) _ (in_tuple (take r (map ttree_of_ptree subs)))).
+
+End Psubtrees.
