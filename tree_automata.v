@@ -1,6 +1,6 @@
-Set Warnings "-notation-overridden".
+Set Warnings "-notation-overridden, -notation-incompatible-format".
 From mathcomp Require Import all_ssreflect.
-Set Warnings "notation-overridden".
+Set Warnings "notation-overridden, notation-incompatible-format".
 
 Require Import Coq.Program.Wf.
 
@@ -461,6 +461,18 @@ Inductive ttree : Type :=
 | leaf : ttree
 | node : forall k : [r.+1], ttree^k -> ttree.
 
+(* We define a nested induction principle because the default one is too weak  *)
+Fixpoint ttree_nind (P : ttree -> Prop)
+    (Pleaf : P leaf)
+    (Pnode : forall (k : [r.+1]) (f : ttree^k),
+      (forall j : [k], P (f j)) -> P (node f)
+    )
+    (t : ttree) : P t :=
+  match t with
+  | leaf => Pleaf
+  | node k f => Pnode k f (fun j => ttree_nind Pleaf Pnode (f j))
+  end.
+
 Definition tarity (t : ttree) : [r.+1] :=
   match t with
   | leaf => ord0
@@ -522,11 +534,22 @@ Fixpoint tpos (t : tterm) : ttree :=
   end.
 Coercion tpos : tterm >-> ttree.
 
+
+Fixpoint ptree_of_ttree (t : ttree) : ptree r.+1 :=
+  match t with
+  | leaf => [:: [::]]
+  | node k ts =>
+      [::] :: [seq rcons p (wdord j) |
+        j <- ord_enum k,
+        p <- ptree_of_ttree (ts j)
+      ]
+  end.
+
 Fixpoint positions (t : tterm) : ptree r.+1 :=
   match t with
   | tleaf _ => [:: [::]]
   | tnode _ k ts =>
-      [::] :: [seq rcons p (wdord j) |
+      [::] :: [seq (wdord j) :: p  |
         j <- ord_enum k,
         p <- positions (ts j)
       ]
@@ -536,7 +559,7 @@ Fixpoint positions_sig (t : tterm) : seq ([r.+1*] * Sigma) :=
   match t with
   | tleaf a => [:: ([::], a)]
   | tnode a k ts =>
-      ([::], a) :: [seq (rcons pa.1 (wdord j), pa.2) |
+      ([::], a) :: [seq ((wdord j) :: pa.1, pa.2) |
         j <- ord_enum k,
         pa <- positions_sig (ts j)
       ]
@@ -590,7 +613,7 @@ Proof.
       by apply /allpairsPdep => /= [[j [p [_ _]]]]; case p.
     apply: allpairs_uniq_dep; first exact: ord_enum_uniq.
       by move=> j _; apply: IH.
-    by move=> [j1 p1] [j2 p2] _ _ /rcons_inj [p1e1p2 /ord_inj j1eqj2]; f_equal.
+    by move=> /= [j1 p1] [j2 p2] _ _ [/ord_inj -> ->].
 
 (*
   - apply /suffix_closedP; case => [// | j p i].
@@ -671,6 +694,46 @@ Qed.
 Next Obligation.
   by split.
 Qed.
+
+Lemma ttree_of_ptree_eq (U : ptree r.+1) : ttree_of_ptree U =
+  match U with
+  | [::] | [:: [::]] => leaf r
+  | V => node [ffun i : [root_arity V] =>
+      ttree_of_ptree (subtrees_of_ptree V (root_arity V) i)
+    ]
+  end.
+Proof.
+  rewrite /ttree_of_ptree fix_sub_eq.
+    rewrite -/ttree_of_ptree /=.
+    by case: U => //=; case => //=; case.
+  case => //=; case.
+    case => //=.
+    move=> a l f g feq1g; congr node.
+    by rewrite -ffunP /= => x; rewrite ffunE; symmetry; rewrite ffunE feq1g.
+    (* TODO report symmetry bug? *)
+  move=> a l V f g feq1g; congr node.
+  by rewrite -ffunP /= => x; rewrite ffunE; symmetry; rewrite ffunE feq1g.
+Qed.
+
+Lemma ptree_of_ttreeK : cancel (@ptree_of_ttree r) ttree_of_ptree.
+Proof.
+  elim/ttree_nind => [// | k f IH /=]; rewrite ttree_of_ptree_eq.
+  case w : [seq _ | _ <- _, _ <- _].
+    exfalso; move: w.
+    admit.
+  move: w => <-.
+  set rarty := root_arity _.
+  have -> : rarty = k.
+    admit.
+  congr node.
+  rewrite -ffunP /= => j; rewrite ffunE -IH.
+Admitted.
+
+Lemma ttree_of_ptreeK (U : ptree r.+1) :
+    tree_like U ->
+  U = ptree_of_ttree (ttree_of_ptree U).
+Proof.
+Admitted.
 
 End ToTtrees.
 
@@ -792,9 +855,8 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 Variable A : tbuta r Sigma state.
-Variable t : tterm r Sigma.
 
-Definition wf_run (d : Sigma) (rho : [r.+1*] -> state) : bool :=
+Definition wf_run (t : tterm r Sigma) (d : Sigma) (rho : [r.+1*] -> state) : bool :=
   all
     (fun p =>
       [forall (k : [r.+1] | k == arity (positions t) p :> nat),
@@ -808,17 +870,24 @@ Definition wf_run (d : Sigma) (rho : [r.+1*] -> state) : bool :=
     (positions t).
 
 
-Lemma wf_run_default (d d' : Sigma) (rho : [r.+1*] -> state) :
-  wf_run d rho = wf_run d' rho.
+Lemma wf_run_default (t : tterm r Sigma) (d d' : Sigma) (rho : [r.+1*] -> state) :
+  wf_run t d rho = wf_run t d' rho.
 Proof.
   rewrite /wf_run.
   apply: eq_in_all => p pinpos.
   by rewrite (sig_at_default d d' pinpos).
 Qed.
 
+Lemma wf_run_tnode (a : Sigma) (k : [r.+1]) (f : (tterm r Sigma)^k) (d : Sigma) (rho : [r.+1*] -> state) :
+  wf_run (tnode a f) d rho -> forall j : [k], wf_run (f j) d rho.
+Proof.
+Admitted.
+
+Variable t : tterm r Sigma.
+
 Record trun := {
   trho : [r.+1*] -> state;
-  _ : forall d, wf_run d trho
+  _ : forall d, wf_run t d trho
 }.
 
 Definition trun_size (rn : trun) : nat :=
@@ -854,6 +923,11 @@ Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
 Proof.
   rewrite /deterministic /unambiguous.
   move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
+  elim/tterm_nind: t => [a /= | a m f IH].
+    admit.
+  set t := tnode _ _.
+  Opaque positions.
+  move=> wfr1 wfr2; have := wfr2; have := wfr1.
   move=> /allP /= wf1 /allP /= wf2 p pinpos.
   set k := Ordinal (arity_tree_like p (positions_tree_like t)).
   have /'forall_implyP /= wf1p := wf1 p pinpos.
@@ -863,7 +937,12 @@ Proof.
   set rho1c := [tuple of [seq rho1 i | i <- _]] : k.-tuple state.
   set rho2c := [tuple of [seq rho2 i | i <- _]].
   have <- : rho1c = rho2c.
-    (* TODO proving this will require a bottom-up induction principle *)
+    rewrite {}/rho1c {}/rho2c; apply: eq_from_tnth => j.
+    rewrite 2!tnth_map.
+    apply: IH; first by apply: wf_run_tnode; apply: wfr1.
+      by apply: wf_run_tnode; apply wfr2.
+    rewrite /children_from_arity_tuple tnth_map tnth_ord_tuple.
+    (* FIXME I think this might not be true *)
     admit.
   have := deterministicA k rho1c (sig_at d t p) => {deterministicA rho2c}.
   set prd := fun tr : (k.-tuple state * Sigma * state) => _.
@@ -884,6 +963,7 @@ Proof.
     move: neqrho12p => /eqP neqrho12p /pair_equal_spec [_ eqrho12p].
     by apply: neqrho12p.
   by rewrite prd2 add1n ltnS ltn0.
+  Transparent positions.
 Admitted.
 
 Section Intersection1.
