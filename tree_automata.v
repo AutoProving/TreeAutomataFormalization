@@ -661,6 +661,13 @@ Definition root_arity (U : ptree r.+1) : [r.+1] :=
   else
     ord0.
 
+Print ttree.
+(* FIXME there should be a +1 below. I think for all intents and purpuses I'm dealing with r.+2... *)
+Definition arity3 (U : ptree r.+1) (p : [r.+1*]) : [r.+1] :=
+  if children U p is [::] then ord0 else
+    (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
+
+
 Lemma subtrees_of_ptree_size (U : ptree r.+1) (i : [root_arity U]) :
     [::] <> U ->
   size (subtrees_of_ptree U (root_arity U) i) < size U.
@@ -847,6 +854,37 @@ Definition deterministic (A : tbuta) : bool :=
     count (fun tr => tr.1 == (qs, a)) (transitions A k) <= 1
   ].
 
+Lemma deterministicP (A : tbuta) :
+  reflect
+    (forall (k : [r.+1]) (qs : k.-tuple state) (a : Sigma) (q1 q2 : state),
+        (qs, a, q1) \in transitions A k ->
+        (qs, a, q2) \in transitions A k ->
+      q1 = q2
+    )
+    (deterministic A).
+Proof.
+  apply: (iffP 'forall_'forall_forallP) => /=.
+    move=> H k qs a q1 q2.
+    set tr1 := (qs, a, q1); set tr2 := (qs, a, q2); move=> tr1trasn tr2trans.
+    have := H k qs a.
+    set f := fun tr => _ => countlt1.
+    have f1 : f tr1 by rewrite /f.
+    have f2 : f tr2 by rewrite /f.
+    have transrm2 := perm_to_rem tr2trans.
+    have tr1inrm : tr1 \in (tr2 :: rem tr2 (transitions A k)).
+      by rewrite -(perm_mem transrm2).
+    have transrm1 := perm_to_rem tr1inrm => {tr1inrm}.
+    have /permP counttran := perm_trans transrm2 transrm1 => {transrm1 transrm2}.
+    move: countlt1; rewrite (counttran f) /= f1 add1n.
+    case: ifP => [/eqP [] // | /eqP neqtr1tr2 /=].
+    by rewrite f2 add1n ltnS ltn0.
+  move=> H k qs a.
+  set f := fun tr => _.
+  case: ltnP => //.
+  have {H} := H k; elim: (transitions A k) => [// | x tr IH H /=].
+  admit.
+Admitted.
+
 End Automata.
 
 Section Runs.
@@ -859,7 +897,7 @@ Variable A : tbuta r Sigma state.
 Definition wf_run (t : tterm r Sigma) (d : Sigma) (rho : [r.+1*] -> state) : bool :=
   all
     (fun p =>
-      [forall (k : [r.+1] | k == arity (positions t) p :> nat),
+      [forall (k : [r.+1] | arity (positions t) p == k),
         (
           [tuple of map rho (children_from_arity_tuple p k)],
           sig_at d t p,
@@ -876,6 +914,27 @@ Proof.
   rewrite /wf_run.
   apply: eq_in_all => p pinpos.
   by rewrite (sig_at_default d d' pinpos).
+Qed.
+
+Lemma wf_runP (t : tterm r Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
+  reflect
+    {in positions t, forall p (k : [r.+1]),
+        arity (positions t) p = k ->
+      (
+        [tuple of map rho (children_from_arity_tuple p k)],
+        sig_at d t p,
+        rho p
+      ) \in transitions A k
+    }
+    (wf_run t d rho).
+Proof.
+  apply: (iffP allP).
+    move=> /= H p pinpos k /eqP karity.
+    have /'forall_implyP /= {}H := H p pinpos.
+    by apply: H.
+  move=> H p pinpos.
+  apply /'forall_implyP => /= k /eqP karity.
+  by apply: H.
 Qed.
 
 Lemma wf_run_tnode (a : Sigma) (k : [r.+1]) (f : (tterm r Sigma)^k) (d : Sigma) (rho : [r.+1*] -> state) :
@@ -921,7 +980,23 @@ Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
   (A : tbuta r Sigma state) (d : Sigma) :
   deterministic A -> unambiguous A d.
 Proof.
-  rewrite /deterministic /unambiguous.
+  move=> /deterministicP deterA t rho1 rho2.
+  elim/tterm_nind : t => [a /= | a m f IH].
+    move=> /wf_runP /= wf1 /wf_runP /= wf2 p pine.
+    apply: (deterA ord0 [tuple]).
+      have := wf1 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
+      rewrite /arity /= => H; have /= := H ord0 (erefl _) => {H}.
+      by rewrite tuple0; apply.
+    have := wf2 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
+    rewrite /arity /= => H; have /= := H ord0 (erefl _) => {H}.
+    by rewrite tuple0; apply.
+  Opaque positions.
+  move=> wf1 /wf_runP /= wf2 p pinpos.
+  apply: deterA.
+  (* TODO I need a better arity *)
+
+(*
+  rewrite /deterministic /unambiguous /=.
   move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
   elim/tterm_nind: t => [a /= | a m f IH].
     admit.
@@ -963,6 +1038,7 @@ Proof.
     move: neqrho12p => /eqP neqrho12p /pair_equal_spec [_ eqrho12p].
     by apply: neqrho12p.
   by rewrite prd2 add1n ltnS ltn0.
+*)
   Transparent positions.
 Admitted.
 
