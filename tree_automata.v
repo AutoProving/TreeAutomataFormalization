@@ -202,12 +202,19 @@ Proof.
   by apply: suffix_closed_correct => //; rewrite in_cons eqxx.
 Qed.
 
+(*
+Definition wdord (k : [r]) : [k] -> [r] :=
+  widen_ord (ltnW (ltn_ord k)).
+*)
 
-Definition wdord (k : [r]) (j : [k]) : [r] :=
-  widen_ord (ltnW (ltn_ord k)) j.
+Definition wdord (k : [r.+1]) : [k] -> [r] :=
+  @widen_ord k r (ltn_ord k).
+
 
 Definition maxo (m n : [r]) : [r] :=
   if m < n then n else m.
+
+Definition So (k : [r]) : [r.+1] := @Ordinal r.+1 k.+1 (ltn_ord k).
 
 Definition subon (j : [r]) (n : nat) : [r].
 Proof.
@@ -320,16 +327,30 @@ Qed.
 Definition children  (U : ptree r) (p : [r*]) : seq [r*] :=
   [seq s <- U | is_parent p s].
 
-Definition arity (U : ptree r) (p : [r*]) : nat :=
-  size (children U p).
+End Strings.
 
+Section Strings2.
+
+Variable r : nat.
+
+Definition arity (U : ptree r.+1) (p : [r.+1*]) : [r.+2] :=
+  if children U p is [::] then ord0 else
+    So (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
+
+Lemma arity_size (U : ptree r.+1) (p : [r.+1*]) :
+  arity U p = size (children U p) :> nat.
+Proof.
+Admitted.
+
+(*
 Definition children_from_arity (p : [r.+1*]) (k : nat) :=
   [seq (inord i) :: p | i <- iota 0 k].
 
 Definition children_from_arity_ord (p : [r*]) (k : [r]) : seq [r*] :=
   [seq (wdord i) :: p | i <- ord_enum k].
+*)
 
-Definition children_from_arity_tuple (p : [r*]) (k : [r]) : k.-tuple [r*] :=
+Definition children_from_arity (p : [r*]) (k : [r.+1]) : k.-tuple [r*] :=
   [tuple (wdord i) :: p | i < k].
 
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
@@ -385,8 +406,9 @@ Lemma connected_correct (S : ptree r) (p : [r*]) :
   (p == [::]) || (p != [::]) && (parent p \notin S).
 Proof. by case: p. Qed.
 
-End Strings.
+End Strings2.
 
+(*
 Definition arity2 (r : nat) (U : ptree r.+1) (p : [r.+1*]) : nat :=
   if children U p is [::] then 0 else
     (\max_(c <- children U p) (head ord0 c)).+1.
@@ -408,6 +430,8 @@ Lemma arity_tree_like (r : nat) (U : ptree r) (p : [r*]) :
 Proof.
 Admitted.
 
+*)
+
 Lemma children_arityP (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
     tree_like U ->
   perm_eq (children U p) (children_from_arity p (arity U p)).
@@ -415,11 +439,13 @@ Proof.
   move=> /and3P [scU /well_numberedP wnU uniqU].
   rewrite /children /children_from_arity.
   apply: uniq_perm; first by apply: filter_uniq.
-    rewrite map_inj_in_uniq ?iota_uniq //= => n m.
+    rewrite map_inj_in_uniq ?enum_uniq //= => n m.
+    (*
     rewrite 2!mem_iota add0n => /andP [_ nlta] /andP [_ mlta] /eqP inpeqimp.
     have : @inord r n = @inord r m :> nat.
       congr val; move: inpeqimp.
       by rewrite eqseq_cons => /andP [/eqP].
+    *)
     admit.
     (*
     rewrite inordK; last by rewrite (ltn_trans nlta) // arity_tree_like.
@@ -429,26 +455,28 @@ Proof.
   apply /(@sameP (s \in [seq s0 <- U | is_parent p s0])); first by apply: idP.
   rewrite mem_filter.
   apply: (iffP idP).
-    move=> /mapP /= [i]; rewrite mem_iota add0n => /andP [_ ilta] ->.
+    (*
+    move=> /mapP /= [i]; rewrite mem_iota => /andP [_ ilta] ->.
     apply /andP; split.
       by rewrite /is_parent andbT /parent /= drop0.
+    *)
     admit.
   rewrite /is_parent.
   case: s; first by rewrite andbF.
   move=> j s.
   rewrite parent_cons => /andP [/andP [/eqP -> _] jpinU].
   apply /mapP => /=.
+  (*
   exists j; last by rewrite inord_val.
   rewrite mem_iota; apply /andP; split => //.
   rewrite add0n /arity /children.
   rewrite size_filter.
   case: ltnP => // aUplej.
+  *)
   (*
   set a := Ordinal (arity_tree_like U p).
   have := wnU _ _ jpinU a.
   *)
-
-
 Admitted.
 
 
@@ -535,7 +563,7 @@ Fixpoint tpos (t : tterm) : ttree :=
 Coercion tpos : tterm >-> ttree.
 
 
-Fixpoint ptree_of_ttree (t : ttree) : ptree r.+1 :=
+Fixpoint ptree_of_ttree (t : ttree) : ptree r :=
   match t with
   | leaf => [:: [::]]
   | node k ts =>
@@ -545,7 +573,7 @@ Fixpoint ptree_of_ttree (t : ttree) : ptree r.+1 :=
       ]
   end.
 
-Fixpoint positions (t : tterm) : ptree r.+1 :=
+Fixpoint positions (t : tterm) : ptree r :=
   match t with
   | tleaf _ => [:: [::]]
   | tnode _ k ts =>
@@ -555,7 +583,7 @@ Fixpoint positions (t : tterm) : ptree r.+1 :=
       ]
   end.
 
-Fixpoint positions_sig (t : tterm) : seq ([r.+1*] * Sigma) :=
+Fixpoint positions_sig (t : tterm) : seq ([r*] * Sigma) :=
   match t with
   | tleaf a => [:: ([::], a)]
   | tnode a k ts =>
@@ -565,7 +593,7 @@ Fixpoint positions_sig (t : tterm) : seq ([r.+1*] * Sigma) :=
       ]
   end.
 
-Definition sig_at (d : Sigma) (t : tterm) (p : [r.+1*]) : Sigma :=
+Definition sig_at (d : Sigma) (t : tterm) (p : [r*]) : Sigma :=
   (nth ([::], d)
     (positions_sig t)
     (find (fun pa => pa.1 == p) (positions_sig t))
@@ -595,6 +623,12 @@ Proof.
     by apply: mem_nth; move: iltsize; rewrite size_map.
   by rewrite /f; apply /eqP; apply: nthpossig.
 Qed.
+
+Lemma positions_tnode (a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*]) :
+    p \in positions (tnode a f) ->
+  forall j : [k], wdord j :: p \in positions (f j).
+Proof.
+Admitted.
 
 Lemma positions_tree_like (t : tterm) : tree_like (positions t).
 Proof.
@@ -647,34 +681,31 @@ End Tterms.
 
 Section ToTtrees.
 
-Variable r : nat.
-
-Definition subtrees_of_ptree (U : ptree r.+1) (k : [r.+1]) :
-    {ffun [k] -> ptree r.+1} :=
+Definition subtrees_of_ptree (r : nat) (U : ptree r) (k : [r.+1]) :
+    {ffun [k] -> ptree r} :=
   [ffun i : [k] =>
     descendants_subtree U [:: wdord i]
   ].
 
+Variable r : nat.
+
+(*
 Definition root_arity (U : ptree r.+1) : [r.+1] :=
   if [::] \in U then
     \big[@maxo r.+1/ord0]_(i <- [seq head ord0 p | p <- U & size p == 1]) i
   else
     ord0.
-
-Print ttree.
-(* FIXME there should be a +1 below. I think for all intents and purpuses I'm dealing with r.+2... *)
-Definition arity3 (U : ptree r.+1) (p : [r.+1*]) : [r.+1] :=
-  if children U p is [::] then ord0 else
-    (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
+*)
 
 
-Lemma subtrees_of_ptree_size (U : ptree r.+1) (i : [root_arity U]) :
+Lemma subtrees_of_ptree_size (U : ptree r.+1) (i : [arity U [::]]) :
     [::] <> U ->
-  size (subtrees_of_ptree U (root_arity U) i) < size U.
+  size (subtrees_of_ptree U (arity U [::]) i) < size U.
 Proof.
   move=> eptyneqU.
   rewrite /subtrees_of_ptree ffunE size_map.
-  move: i; rewrite /root_arity.
+  (*
+  move: i; rewrite /arity.
   case: ifP; last by move=> _ [].
   move=> eptyinU /= i; rewrite /descendants size_filter.
   have := count_size (is_ancestor [:: wdord i]) U.
@@ -682,14 +713,15 @@ Proof.
   rewrite -all_count => allancestor; exfalso.
   move: allancestor; apply /negP; apply /allPn => /=.
   by exists [::].
-Qed.
+  *)
+Admitted.
 
 Program Fixpoint ttree_of_ptree (U : ptree r.+1) {measure (size U)}
-    : ttree r :=
+    : ttree r.+1 :=
   match U with
-  | [::] | [:: [::]] => leaf r
-  | V => node [ffun i : [root_arity V] =>
-      ttree_of_ptree (subtrees_of_ptree V (root_arity V) i)
+  | [::] | [:: [::]] => leaf r.+1
+  | V => node [ffun i : [arity V [::]] =>
+      ttree_of_ptree (subtrees_of_ptree V (arity V [::]) i)
     ]
   end.
 Next Obligation.
@@ -704,9 +736,9 @@ Qed.
 
 Lemma ttree_of_ptree_eq (U : ptree r.+1) : ttree_of_ptree U =
   match U with
-  | [::] | [:: [::]] => leaf r
-  | V => node [ffun i : [root_arity V] =>
-      ttree_of_ptree (subtrees_of_ptree V (root_arity V) i)
+  | [::] | [:: [::]] => leaf r.+1
+  | V => node [ffun i : [arity V [::]] =>
+      ttree_of_ptree (subtrees_of_ptree V (arity V [::]) i)
     ]
   end.
 Proof.
@@ -722,14 +754,14 @@ Proof.
   by rewrite -ffunP /= => x; rewrite ffunE; symmetry; rewrite ffunE feq1g.
 Qed.
 
-Lemma ptree_of_ttreeK : cancel (@ptree_of_ttree r) ttree_of_ptree.
+Lemma ptree_of_ttreeK : cancel (@ptree_of_ttree r.+1) ttree_of_ptree.
 Proof.
   elim/ttree_nind => [// | k f IH /=]; rewrite ttree_of_ptree_eq.
   case w : [seq _ | _ <- _, _ <- _].
     exfalso; move: w.
     admit.
   move: w => <-.
-  set rarty := root_arity _.
+  set rarty := arity _ _.
   have -> : rarty = k.
     admit.
   congr node.
@@ -892,61 +924,55 @@ Section Runs.
 Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
-Variable A : tbuta r Sigma state.
+Variable A : tbuta r.+1 Sigma state.
 
-Definition wf_run (t : tterm r Sigma) (d : Sigma) (rho : [r.+1*] -> state) : bool :=
+Definition wfrun (t : tterm r.+1 Sigma) (d : Sigma)
+    (rho : [r.+1*] -> state) : bool :=
   all
-    (fun p =>
-      [forall (k : [r.+1] | arity (positions t) p == k),
-        (
-          [tuple of map rho (children_from_arity_tuple p k)],
-          sig_at d t p,
-          rho p
-        ) \in transitions A k
-      ]
+    (fun p : [r.+1*] =>
+      (
+        [tuple of map rho (children_from_arity p (arity (positions t) p))],
+        sig_at d t p,
+        rho p
+      ) \in transitions A (arity (positions t) p)
     )
     (positions t).
 
 
-Lemma wf_run_default (t : tterm r Sigma) (d d' : Sigma) (rho : [r.+1*] -> state) :
-  wf_run t d rho = wf_run t d' rho.
+Lemma wfrun_default (t : tterm r.+1 Sigma) (d d' : Sigma)
+    (rho : [r.+1*] -> state) :
+  wfrun t d rho = wfrun t d' rho.
 Proof.
-  rewrite /wf_run.
+  rewrite /wfrun.
   apply: eq_in_all => p pinpos.
   by rewrite (sig_at_default d d' pinpos).
 Qed.
 
-Lemma wf_runP (t : tterm r Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
+Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
   reflect
-    {in positions t, forall p (k : [r.+1]),
-        arity (positions t) p = k ->
+    {in positions t, forall p,
       (
-        [tuple of map rho (children_from_arity_tuple p k)],
+        [tuple of map rho (children_from_arity p (arity (positions t) p))],
         sig_at d t p,
         rho p
-      ) \in transitions A k
+      ) \in transitions A (arity (positions t) p)
     }
-    (wf_run t d rho).
+    (wfrun t d rho).
 Proof.
-  apply: (iffP allP).
-    move=> /= H p pinpos k /eqP karity.
-    have /'forall_implyP /= {}H := H p pinpos.
-    by apply: H.
-  move=> H p pinpos.
-  apply /'forall_implyP => /= k /eqP karity.
-  by apply: H.
+  by apply: (iffP allP).
 Qed.
 
-Lemma wf_run_tnode (a : Sigma) (k : [r.+1]) (f : (tterm r Sigma)^k) (d : Sigma) (rho : [r.+1*] -> state) :
-  wf_run (tnode a f) d rho -> forall j : [k], wf_run (f j) d rho.
+Lemma wfrun_tnode (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) (d : Sigma)
+    (rho : [r.+1*] -> state) :
+  wfrun (tnode a f) d rho -> forall j : [k], wfrun (f j) d rho.
 Proof.
 Admitted.
 
-Variable t : tterm r Sigma.
+Variable t : tterm r.+1 Sigma.
 
 Record trun := {
   trho : [r.+1*] -> state;
-  _ : forall d, wf_run t d trho
+  _ : forall d, wfrun t d trho
 }.
 
 Definition trun_size (rn : trun) : nat :=
@@ -958,13 +984,13 @@ Definition reaches_state (rn : trun) (q : state) : bool :=
 Definition is_accepting (rn : trun) : bool :=
   has (reaches_state rn) (final A).
 
-Definition reaches_transition (rn : trun) (k : [r.+1])
+Definition reaches_transition (rn : trun) (k : [r.+2])
     (tr : k.-tuple state * Sigma * state) : bool :=
   (k == arity (positions t) [::] :> nat)
     &&
     (tr == (
       [tuple trho rn [:: wdord i] | i < k],
-      (* the above line should be the same as using children_from_arity_tuple *)
+      (* the above line should be the same as using children_from_arity *)
       head_sig t,
       trho rn [::]
     )).
@@ -972,29 +998,41 @@ Definition reaches_transition (rn : trun) (k : [r.+1])
 End Runs.
 
 Definition unambiguous (r : nat) (Sigma state : finType)
-  (A : tbuta r Sigma state) (d : Sigma) : Prop :=
-  forall (t : tterm r Sigma) (rho1 rho2 : [r.+1*] -> state),
-    wf_run A t d rho1 -> wf_run A t d rho2 -> {in positions t, rho1 =1 rho2}.
+  (A : tbuta r.+1 Sigma state) (d : Sigma) : Prop :=
+  forall (t : tterm r.+1 Sigma) (rho1 rho2 : [r.+1*] -> state),
+    wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
 
 Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
-  (A : tbuta r Sigma state) (d : Sigma) :
+  (A : tbuta r.+1 Sigma state) (d : Sigma) :
   deterministic A -> unambiguous A d.
 Proof.
   move=> /deterministicP deterA t rho1 rho2.
   elim/tterm_nind : t => [a /= | a m f IH].
-    move=> /wf_runP /= wf1 /wf_runP /= wf2 p pine.
+    move=> /wfrunP /= wf1 /wfrunP /= wf2 p pine.
     apply: (deterA ord0 [tuple]).
       have := wf1 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
-      rewrite /arity /= => H; have /= := H ord0 (erefl _) => {H}.
-      by rewrite tuple0; apply.
+      by rewrite /arity /= tuple0; apply.
     have := wf2 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
-    rewrite /arity /= => H; have /= := H ord0 (erefl _) => {H}.
-    by rewrite tuple0; apply.
-  Opaque positions.
-  move=> wf1 /wf_runP /= wf2 p pinpos.
-  apply: deterA.
-  (* TODO I need a better arity *)
-
+    by rewrite /arity /= tuple0; apply.
+  Opaque positions children_from_arity.
+  move=> wf1 wf2 /= p pinpos.
+  (* FIXME maybe here we want [::] instead of p? But then why is p here? *)
+  pose k := arity (positions (tnode a f)) p.
+  apply: (deterA k).
+    by move: wf1 => /wfrunP /(_ p) /(_ pinpos); apply.
+  suff -> : [tuple of map rho1 (children_from_arity p k)] =
+            [tuple of map rho2 (children_from_arity p k)].
+    by move: wf2 => /wfrunP /(_ p) /(_ pinpos); apply.
+  apply: eq_from_tnth => i; rewrite 2!tnth_map.
+  Transparent children_from_arity.
+  rewrite /children_from_arity tnth_map tnth_ord_tuple.
+  apply: IH.
+  - admit.
+  - admit.
+  (* TODO need to see that m = k *)
+  (* m is the arity of tnode a f; k is the arity of p *)
+  have H := positions_tnode pinpos.
+  admit.
 (*
   rewrite /deterministic /unambiguous /=.
   move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
@@ -1014,8 +1052,8 @@ Proof.
   have <- : rho1c = rho2c.
     rewrite {}/rho1c {}/rho2c; apply: eq_from_tnth => j.
     rewrite 2!tnth_map.
-    apply: IH; first by apply: wf_run_tnode; apply: wfr1.
-      by apply: wf_run_tnode; apply wfr2.
+    apply: IH; first by apply: wfrun_tnode; apply: wfr1.
+      by apply: wfrun_tnode; apply wfr2.
     rewrite /children_from_arity_tuple tnth_map tnth_ord_tuple.
     (* FIXME I think this might not be true *)
     admit.
@@ -1354,7 +1392,7 @@ Definition ts_has_pos (t : tsterm) (s : [r*]) : bool :=
 End Tsterms.
 
 Lemma positions_has_pos (r : nat) (Sigma : finType) (t : tterm r Sigma)
-     (s : [r.+1*]) :
+     (s : [r*]) :
    (s \in positions t) = (ts_has_pos (tsterm_of_tterm t) s).
 Proof.
 Admitted.
