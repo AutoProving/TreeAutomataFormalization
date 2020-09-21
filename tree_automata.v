@@ -258,10 +258,24 @@ Qed.
 Definition tree_like (U : ptree r) : bool :=
   [&& suffix_closed U, well_numbered U & uniq U].
 
+Lemma tree_likeP (U : ptree r) :
+  reflect
+    [/\ suffix_closed U, well_numbered U & uniq U]
+    (tree_like U).
+Proof. by apply: (iffP and3P). Qed.
+
+Lemma tree_like_nil (U : ptree r) :
+  tree_like U -> U != [::] -> [::] \in U.
+Proof.
+  by move=> /tree_likeP [? _ _]; apply: suffix_closed_nil.
+Qed.
+
+(*
 Record tree := Tree {
   ptree_of_tree :> ptree r;
   _ : tree_like ptree_of_tree
 }.
+*)
 
 (* p is a parent of q                                                          *)
 Definition is_parent (p q : [r*]) : bool := (parent q == p) && (q != [::]).
@@ -668,6 +682,14 @@ Proof.
  *)
 Admitted.
 
+Lemma positions_nil (t : tterm) :
+  [::] \in positions t.
+Proof.
+  apply: tree_like_nil.
+    by apply: positions_tree_like.
+  by case: t.
+Qed.
+
 Definition tchildren (t : tterm) : seq tterm :=
   match t with
   | tleaf _ => [::]
@@ -962,9 +984,14 @@ Proof.
   by apply: (iffP allP).
 Qed.
 
-Lemma wfrun_tnode (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) (d : Sigma)
-    (rho : [r.+1*] -> state) :
-  wfrun (tnode a f) d rho -> forall j : [k], wfrun (f j) d rho.
+Definition partial_run (rho : [r.+1*] -> state) (j : [r.+1])
+    : [r.+1*] -> state :=
+  fun p => rho (j :: p).
+
+Lemma partial_wfrun (rho : [r.+1*] -> state) (a : Sigma) (k : [r.+2])
+  (f : (tterm r.+1 Sigma)^k) (d : Sigma) :
+    wfrun (tnode a f) d rho ->
+  forall (j : [k]), wfrun (f j) d (partial_run rho (wdord j)).
 Proof.
 Admitted.
 
@@ -1002,12 +1029,101 @@ Definition unambiguous (r : nat) (Sigma state : finType)
   forall (t : tterm r.+1 Sigma) (rho1 rho2 : [r.+1*] -> state),
     wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
 
+Lemma eq_in_map_tuple (T1 : eqType) (T2 : Type) (f1 f2 : T1 -> T2) (k : nat)
+      (s : k.-tuple T1) :
+   {in s, f1 =1 f2} <->
+   [tuple of [seq f1 i | i <- s]] = [tuple of [seq f2 i | i <- s]].
+Proof.
+  split => [eq1f1f2 | eqt12].
+    apply: eq_from_tnth => i; rewrite 2!tnth_map.
+    by apply: eq1f1f2; apply: mem_tnth.
+  rewrite eq_in_map.
+  rewrite -[[seq f1 _ | _ <- _]]/(val [tuple of [seq f1 _ | _ <- _]]).
+  rewrite -[[seq f2 _ | _ <- _]]/(val [tuple of [seq f2 _ | _ <- _]]).
+  by congr val.
+Qed.
+
+Lemma arity_positions (r : nat) (Sigma : finType) (a : Sigma) (k : [r.+2])
+    (f : (tterm r.+1 Sigma)^k) :
+  arity (positions (tnode a f)) [::] = k.
+Proof.
+  (*
+  rewrite /arity /=.
+  case eqordenum : (ord_enum k) => [/=| i w].
+    move: eqordenum; rewrite /ord_enum /=.
+    case: {+}k; case => [/= i lti | n ltn1 H]; first by apply /eqP.
+    exfalso; move: H.
+    Opaque pmap.
+    rewrite /= -cat1s pmap_cat.
+    Transparent pmap.
+    rewrite /= /insub /=.
+    Search _ pmap cat.
+    Search _ cat cons.
+
+    have : iota 0 (Ordinal ltn1) <> [::].
+      rewrite /=.
+
+
+  move: f; case: k; case => [? ? /= | /=]; first by apply /eqP.
+  move=> n ltnr f.
+  rewrite /ord_enum /=.
+  set cs := children _ _.
+*)
+Admitted.
+
+Lemma child_ind (r : nat) (Sigma : finType) (t : tterm r.+1 Sigma)
+  (P : [r.+1*] -> Prop)
+  (Pleaves : forall l, l \in positions t -> is_leaf (positions t) l -> P l)
+  (Pchildren : forall p, p \in positions t -> (forall q,
+    (q \in children_from_arity p (arity (positions t) p) -> P q)) -> P p
+  )
+  (p : [r.+1*]) (pinpos : p \in positions t) : P p.
+Proof.
+  (* TODO no idea how to prove this as such. Maybe with a lemma mapping p \in positions t to t itself? *)
+  have [pleaf | notpleaf] := boolP (is_leaf (positions t) p).
+    by apply: Pleaves.
+  have := Pchildren; apply => // q qinchildren.
+Admitted.
+
+Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :
+  is_leaf U l -> arity U l = ord0.
+Proof.
+Admitted.
+
+(* TODO *)
+Lemma report_bug X Y (f g : X -> Y) :
+  [tuple of map f [tuple]] = [tuple of map g [tuple]].
+Proof.
+  by rewrite tuple0; symmetry; rewrite tuple0.
+Qed.
+
+Lemma children_from_arity0 (r : nat) (p : [r*]) :
+  children_from_arity p ord0 = [tuple].
+Proof. by rewrite tuple0. Qed.
+
 Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
   (A : tbuta r.+1 Sigma state) (d : Sigma) :
   deterministic A -> unambiguous A d.
 Proof.
-  move=> /deterministicP deterA t rho1 rho2.
-  elim/tterm_nind : t => [a /= | a m f IH].
+  move=> /deterministicP deterA.
+  move=> t rho1 rho2 wf1 wf2 /=.
+  apply: child_ind => /=.
+    move=> l linpos lleaf.
+    apply: deterA.
+      by move: wf1 => /wfrunP /(_ l) /(_ linpos); apply.
+    have := wf2 => /wfrunP /(_ l) /(_ linpos).
+    by rewrite arity_leaf // children_from_arity0 (report_bug _ rho1); apply.
+  move=> p pinpos IH; apply: deterA.
+    by move: wf1 => /wfrunP /(_ p) /(_ pinpos); apply.
+  have := wf2 => /wfrunP /(_ p) /(_ pinpos).
+  set tup1 := [tuple of [seq rho1 _ | _ <- _]].
+  set tup2 := [tuple of [seq rho2 _ | _ <- _]].
+  suff -> : tup1 = tup2 by apply.
+  rewrite -eq_in_map_tuple => /= q qinchildren.
+  by apply: IH.
+
+  (*
+  elim/tterm_nind => [a /= rho1 rho2 | a m f IH rho1 rho2].
     move=> /wfrunP /= wf1 /wfrunP /= wf2 p pine.
     apply: (deterA ord0 [tuple]).
       have := wf1 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
@@ -1015,7 +1131,25 @@ Proof.
     have := wf2 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
     by rewrite /arity /= tuple0; apply.
   Opaque positions children_from_arity.
-  move=> wf1 wf2 /= p pinpos.
+  move=> wf1 wf2 /=; elim => [einpos | i q IHp iqinpos].
+    apply: deterA.
+      by move: wf1 => /wfrunP /(_ [::]) /(_ einpos); apply.
+    have := wf2 => /wfrunP /(_ [::]) /(_ einpos); rewrite arity_positions.
+    set tup1 := [tuple of [seq rho1 _ | _ <- _]].
+    set tup2 := [tuple of [seq rho2 _ | _ <- _]].
+    suff -> : tup1 = tup2 by apply.
+    rewrite -eq_in_map_tuple => /= p /mapP /= [j _] -> {p}.
+    pose rho1' := partial_run rho1 (wdord j).
+    pose rho2' := partial_run rho2 (wdord j).
+    apply: (IH j rho1' rho2'); last by apply: positions_nil.
+      by apply: partial_wfrun; apply: wf1.
+    by apply: partial_wfrun; apply: wf2.
+  apply: deterA.
+    by move: wf1 => /wfrunP /(_ (i :: q)) /(_ iqinpos); apply.
+  have := wf2 => /wfrunP /(_ (i :: q)) /(_ iqinpos).
+  *)
+
+  (*
   (* FIXME maybe here we want [::] instead of p? But then why is p here? *)
   pose k := arity (positions (tnode a f)) p.
   apply: (deterA k).
@@ -1033,6 +1167,7 @@ Proof.
   (* m is the arity of tnode a f; k is the arity of p *)
   have H := positions_tnode pinpos.
   admit.
+  *)
 (*
   rewrite /deterministic /unambiguous /=.
   move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
@@ -1077,8 +1212,8 @@ Proof.
     by apply: neqrho12p.
   by rewrite prd2 add1n ltnS ltn0.
 *)
-  Transparent positions.
-Admitted.
+(*  Transparent positions.*)
+Qed.
 
 Section Intersection1.
 
