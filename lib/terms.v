@@ -4,7 +4,7 @@ Set Warnings "notation-overridden, notation-incompatible-format".
 
 Require Import Coq.Program.Wf.
 
-Require Import Trees.
+Require Import trees.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -713,6 +713,7 @@ Proof.
   apply: (Pchildren (tnode a f)) => // q qinchildren.
 
 
+  (*
   /positions_tnode [-> | [j [q [-> qinpos]]]].
     admit.
   have : wdord j :: q \in children_from_arity
@@ -721,12 +722,14 @@ Proof.
   move=> s /children_from_arityP [i ->].
   apply: (IH j).
     admit.
+*)
 
-
+(*
   (* TODO no idea how to prove this as such. Maybe with a lemma mapping p \in positions t to t itself? *)
   have [pleaf | notpleaf] := boolP (is_leaf (positions t) p).
     by apply: Pleaves.
   have := Pchildren; apply => // q qinchildren.
+*)
 Admitted.
 
 Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :

@@ -487,6 +487,7 @@ Program Fixpoint test (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
 Admit Obligations.
 *)
 
+(*
 Unset Program Cases.
 Program Fixpoint child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
     (tlikeU : tree_like U)
@@ -510,3 +511,4 @@ Next Obligation.
   by rewrite height_is_leaf.
 (* FIXME doesn't terminate! :( *)
 Qed.
+*)
