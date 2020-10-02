@@ -410,6 +410,7 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 
+(* TODO need a restriction of uniqueness of transitions *)
 Record tbuta : Type := {
   final : seq state;
   transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
@@ -514,6 +515,12 @@ Definition deterministic (A : tbuta) : bool :=
     count (fun tr => tr.1 == (qs, a)) (transitions A k) <= 1
   ].
 
+Lemma sub_in_count (T : eqType) (a1 a2 : pred T) (s : seq T) :
+    {in s, subpred a1 a2} ->
+  count a1 s <= count a2 s.
+Proof.
+Admitted.
+
 Lemma deterministicP (A : tbuta) :
   reflect
     (forall (k : [r.+1]) (qs : k.-tuple state) (a : Sigma) (q1 q2 : state),
@@ -540,8 +547,23 @@ Proof.
     by rewrite f2 add1n ltnS ltn0.
   move=> H k qs a.
   set f := fun tr => _.
-  case: ltnP => //.
-  have {H} := H k; elim: (transitions A k) => [// | x tr IH H /=].
+  rewrite -size_filter.
+  case isfilter : (filter f (transitions A k)) => [// | tr1 trs].
+  rewrite -isfilter size_filter.
+  have tr1infilter : tr1 \in filter f (transitions A k).
+    by rewrite isfilter mem_head.
+  have ftr1 : f tr1.
+    by move: tr1infilter; rewrite mem_filter => /andP [].
+  have subftr1 : {in transitions A k, subpred f (pred1 tr1)}.
+    move=> /= tr trintrans; rewrite /f => /eqP eqtr1qsa.
+    rewrite (surjective_pairing tr1) (surjective_pairing tr) eqtr1qsa.
+    have eqtr11qsa : tr1.1 = (qs, a) by move: ftr1; rewrite /f => /eqP ->.
+    rewrite eqtr11qsa; apply /eqP; rewrite pair_equal_spec; split => //.
+    apply: (H k qs a); first by rewrite -eqtr1qsa -surjective_pairing.
+    rewrite -eqtr11qsa -surjective_pairing.
+    by move: tr1infilter; rewrite mem_filter => /andP [].
+  rewrite (leq_trans (sub_in_count subftr1)) //.
+  rewrite count_uniq_mem ?leq_b1 //.
   admit.
 Admitted.
 
@@ -677,22 +699,6 @@ Proof.
 *)
 Admitted.
 
-(*
-Fixpoint child_indf (r : nat) (Sigma : finType) (t : tterm r.+1 Sigma)
-  (P : [r.+1*] -> Prop)
-  (Pleaves : forall l : [r.+1*], l \in positions t -> is_leaf (positions t) l -> P l)
-  (Pchildren : forall p : [r.+1*], p \in positions t -> (forall q : [r.+1*],
-    (q \in children_from_arity p (arity (positions t) p) -> P q)) -> P p
-  )
-  (p : [r.+1*]) (pinpos : p \in positions t) : P p :=
-  if is_leaf (positionsn t) p as pleaf then
-    Pleaf p pinpos pleaf
-  else
-    Pchildren p pinpos (child_indf r Sigma )
-*)
-
-
-(* TODO remove l \in positions from Pleaves? *)
 Lemma child_ind (r : nat) (Sigma : finType)
   (P : [r.+1*] -> Prop) (Q : tterm r.+1 Sigma -> Prop)
   (Pleaves : forall (t : tterm r.+1 Sigma), Q t ->
@@ -707,35 +713,30 @@ Lemma child_ind (r : nat) (Sigma : finType)
   )
   (t : tterm r.+1 Sigma) (Qt : Q t) (p : [r.+1*]) (pinpos : p \in positions t) : P p.
 Proof.
-  move: Qt p pinpos; elim/tterm_nind: t.
-    by move=> a Ql p pinpos; apply: (Pleaves (tleaf r.+1 a)).
-  move=> a k f IH Qnode p pinpos.
-  apply: (Pchildren (tnode a f)) => // q qinchildren.
-
-
-  (*
-  /positions_tnode [-> | [j [q [-> qinpos]]]].
-    admit.
-  have : wdord j :: q \in children_from_arity
-  apply: (Pchildren (tnode a f)) => //.
-    by rewrite -positions_child.
-  move=> s /children_from_arityP [i ->].
-  apply: (IH j).
-    admit.
-*)
-
-(*
-  (* TODO no idea how to prove this as such. Maybe with a lemma mapping p \in positions t to t itself? *)
-  have [pleaf | notpleaf] := boolP (is_leaf (positions t) p).
-    by apply: Pleaves.
-  have := Pchildren; apply => // q qinchildren.
-*)
+  apply: (@child_ind1 _ (positions t)) => //.
+  - by apply: positions_tree_like.
+  - move=> l lleaf; apply: (Pleaves t) => //.
+    admit. (* TODO need to add this as hypothesis in child_ind1 *)
+  move=> q qinpos IH.
+  by apply: (Pchildren t) => // c /children_from_arityP [i ->]; apply: IH.
 Admitted.
+
+Lemma children_is_leaf (r : nat) (U : ptree r) (l : [r*]) :
+  is_leaf U l -> children U l = [::].
+Proof.
+  move=> /allP /= lleaf; rewrite /children -(filter_pred0 U).
+  apply: eq_in_filter => /= p pinU; rewrite /is_parent.
+  apply /andP => [[/eqP parentpisl pneqnil]].
+  have := lleaf p pinU; apply /negP /negPn /andP.
+  move: parentpisl; rewrite /parent => <-.
+  by rewrite size_drop subKn //; move: pinU pneqnil; case: p.
+Qed.
 
 Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :
   is_leaf U l -> arity U l = ord0.
 Proof.
-Admitted.
+  by move=> lleaf; rewrite /arity children_is_leaf.
+Qed.
 
 (* TODO *)
 Lemma report_bug X Y (f g : X -> Y) :
@@ -785,98 +786,6 @@ Proof.
   suff -> : tup1 = tup2 by apply.
   rewrite -eq_in_map_tuple => /= s sinchildren.
   by apply: IH.
-
-  (*
-  elim/tterm_nind => [a /= rho1 rho2 | a m f IH rho1 rho2].
-    move=> /wfrunP /= wf1 /wfrunP /= wf2 p pine.
-    apply: (deterA ord0 [tuple]).
-      have := wf1 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
-      by rewrite /arity /= tuple0; apply.
-    have := wf2 p pine; move: pine; rewrite mem_seq1 => /eqP ->.
-    by rewrite /arity /= tuple0; apply.
-  Opaque positions children_from_arity.
-  move=> wf1 wf2 /=; elim => [einpos | i q IHp iqinpos].
-    apply: deterA.
-      by move: wf1 => /wfrunP /(_ [::]) /(_ einpos); apply.
-    have := wf2 => /wfrunP /(_ [::]) /(_ einpos); rewrite arity_positions.
-    set tup1 := [tuple of [seq rho1 _ | _ <- _]].
-    set tup2 := [tuple of [seq rho2 _ | _ <- _]].
-    suff -> : tup1 = tup2 by apply.
-    rewrite -eq_in_map_tuple => /= p /mapP /= [j _] -> {p}.
-    pose rho1' := partial_run rho1 (wdord j).
-    pose rho2' := partial_run rho2 (wdord j).
-    apply: (IH j rho1' rho2'); last by apply: positions_nil.
-      by apply: partial_wfrun; apply: wf1.
-    by apply: partial_wfrun; apply: wf2.
-  apply: deterA.
-    by move: wf1 => /wfrunP /(_ (i :: q)) /(_ iqinpos); apply.
-  have := wf2 => /wfrunP /(_ (i :: q)) /(_ iqinpos).
-  *)
-
-  (*
-  (* FIXME maybe here we want [::] instead of p? But then why is p here? *)
-  pose k := arity (positions (tnode a f)) p.
-  apply: (deterA k).
-    by move: wf1 => /wfrunP /(_ p) /(_ pinpos); apply.
-  suff -> : [tuple of map rho1 (children_from_arity p k)] =
-            [tuple of map rho2 (children_from_arity p k)].
-    by move: wf2 => /wfrunP /(_ p) /(_ pinpos); apply.
-  apply: eq_from_tnth => i; rewrite 2!tnth_map.
-  Transparent children_from_arity.
-  rewrite /children_from_arity tnth_map tnth_ord_tuple.
-  apply: IH.
-  - admit.
-  - admit.
-  (* TODO need to see that m = k *)
-  (* m is the arity of tnode a f; k is the arity of p *)
-  have H := positions_tnode pinpos.
-  admit.
-  *)
-(*
-  rewrite /deterministic /unambiguous /=.
-  move=> /'forall_'forall_forallP /= deterministicA t rho1 rho2.
-  elim/tterm_nind: t => [a /= | a m f IH].
-    admit.
-  set t := tnode _ _.
-  Opaque positions.
-  move=> wfr1 wfr2; have := wfr2; have := wfr1.
-  move=> /allP /= wf1 /allP /= wf2 p pinpos.
-  set k := Ordinal (arity_tree_like p (positions_tree_like t)).
-  have /'forall_implyP /= wf1p := wf1 p pinpos.
-  have := wf1p k (eq_refl _) => {wf1 wf1p}.
-  have /'forall_implyP /= wf2p := wf2 p pinpos.
-  have := wf2p k (eq_refl _) => {wf2 wf2p}.
-  set rho1c := [tuple of [seq rho1 i | i <- _]] : k.-tuple state.
-  set rho2c := [tuple of [seq rho2 i | i <- _]].
-  have <- : rho1c = rho2c.
-    rewrite {}/rho1c {}/rho2c; apply: eq_from_tnth => j.
-    rewrite 2!tnth_map.
-    apply: IH; first by apply: wfrun_tnode; apply: wfr1.
-      by apply: wfrun_tnode; apply wfr2.
-    rewrite /children_from_arity_tuple tnth_map tnth_ord_tuple.
-    (* FIXME I think this might not be true *)
-    admit.
-  have := deterministicA k rho1c (sig_at d t p) => {deterministicA rho2c}.
-  set prd := fun tr : (k.-tuple state * Sigma * state) => _.
-  have [/eqP // | neqrho12p] := boolP (rho1 p == rho2 p).
-  set tr1 := (_, _, rho1 p) : (k.-tuple state * Sigma * state).
-  set tr2 := (_, _, rho2 p) : (k.-tuple state * Sigma * state).
-  have prd1 : prd tr1 by rewrite /prd.
-  have prd2 : prd tr2 by rewrite /prd.
-  move=> countlt1 tr2intr tr1intr.
-  have transrm2 := perm_to_rem tr2intr.
-  have tr1inrm : tr1 \in (tr2 :: rem tr2 (transitions A k)).
-    by rewrite -(perm_mem transrm2).
-  have transrm1 := perm_to_rem tr1inrm => {tr1inrm}.
-  have /permP count_tran := perm_trans transrm2 transrm1 => {transrm1 transrm2}.
-  move: countlt1; rewrite (count_tran prd) /= prd1 add1n.
-  have -> /= : tr2 == tr1 = false.
-    apply /eqP; rewrite /tr1 /tr2.
-    move: neqrho12p => /eqP neqrho12p /pair_equal_spec [_ eqrho12p].
-    by apply: neqrho12p.
-  by rewrite prd2 add1n ltnS ltn0.
-*)
-(*  Transparent positions.*)
 Qed.
 
 Section Intersection1.
