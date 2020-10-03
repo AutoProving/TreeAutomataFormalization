@@ -362,11 +362,10 @@ Lemma child_ind (r : nat) (Sigma : finType)
 Proof.
   apply: (@child_ind1 _ (positions t)) => //.
   - by apply: positions_tree_like.
-  - move=> l lleaf; apply: (Pleaves t) => //.
-    admit. (* TODO need to add this as hypothesis in child_ind1 *)
+  - by move=> l linpos lleaf; apply: (Pleaves t).
   move=> q qinpos IH.
   by apply: (Pchildren t) => // c /children_from_arityP [i ->]; apply: IH.
-Admitted.
+Qed.
 
 Section ToTtrees.
 
@@ -471,14 +470,39 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 
-(* TODO need a restriction of uniqueness of transitions *)
 Record tbuta : Type := {
   final : seq state;
   transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
 }.
 
+Definition tbuta_uniq (A : tbuta) : bool :=
+  [forall k : [r.+1], uniq (transitions A k)].
+
+Lemma tbuta_uniqP (A : tbuta) :
+  reflect
+    (forall k : [r.+1], uniq (transitions A k))
+    (tbuta_uniq A).
+Proof. by apply: (iffP forallP). Qed.
+
+Record buta : Type := BUTA {
+  tbuta_of_buta :> tbuta;
+  _ : tbuta_uniq tbuta_of_buta;
+}.
+Canonical buta_subType := [subType for tbuta_of_buta].
+
+Lemma buta_uniq (A : buta) : tbuta_uniq A.
+Proof. by case: A. Qed.
+
+Lemma buta_uniq_trans (A : buta) (k : [r.+1]) :
+  uniq (transitions A k).
+Proof. by have /tbuta_uniqP /(_ k) := buta_uniq A. Qed.
+
+Lemma buta_undup (A : buta) (k : [r.+1]) :
+  undup (transitions A k) = transitions A k.
+Proof. by apply: undup_id; apply: buta_uniq_trans. Qed.
+
 Definition buta_size (A : tbuta) : nat :=
-  #|state| + \sum_(k < r.+1) (size (transitions A k)).
+  #|state| + \sum_(k < r.+1) (size (undup (transitions A k))).
 
 Fixpoint reach_at_depth (A : tbuta) (q : state) (t : tterm r Sigma) (i : nat) :
     bool :=
@@ -563,7 +587,7 @@ Definition accepts (A : tbuta) (t : tterm r Sigma) : bool :=
 
 Definition transitions_preim (A : tbuta) (q : state) :
     {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)} :=
-  [ffun k : [r.+1] => [seq tr <- transitions A k | tr.2 == q]].
+  [ffun k : [r.+1] => [seq tr <- undup (transitions A k) | tr.2 == q]].
 
 Definition in_degree_state (A : tbuta) (q : state) : nat :=
   \sum_(k < r.+1) (size (transitions_preim A q k)).
@@ -576,7 +600,7 @@ Definition deterministic (A : tbuta) : bool :=
     count (fun tr => tr.1 == (qs, a)) (transitions A k) <= 1
   ].
 
-Lemma deterministicP (A : tbuta) :
+Lemma deterministicP (A : buta) :
   reflect
     (forall (k : [r.+1]) (qs : k.-tuple state) (a : Sigma) (q1 q2 : state),
         (qs, a, q1) \in transitions A k ->
@@ -618,9 +642,8 @@ Proof.
     rewrite -eqtr11qsa -surjective_pairing.
     by move: tr1infilter; rewrite mem_filter => /andP [].
   rewrite (leq_trans (sub_in_count subftr1)) //.
-  rewrite count_uniq_mem ?leq_b1 //.
-  admit.
-Admitted.
+  by rewrite count_uniq_mem ?leq_b1 ?buta_uniq_trans.
+Qed.
 
 End Automata.
 
@@ -713,7 +736,7 @@ Definition unambiguous (r : nat) (Sigma state : finType)
     wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
 
 Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
-  (A : tbuta r.+1 Sigma state) (d : Sigma) :
+  (A : buta r.+1 Sigma state) (d : Sigma) :
   deterministic A -> unambiguous A d.
 Proof.
   move=> /deterministicP deterA.
@@ -749,6 +772,12 @@ Definition restrict (state : finType) (A : tbuta r Sig state) (n : nat)
     ];
   |}.
 
+Lemma restrict_uniq (state : finType) (A : buta r Sig state) (n : nat)
+      (nler : n < r.+1) :
+  tbuta_uniq (restrict A nler).
+Proof.
+Admitted.
+
 Lemma restrict_self (state : finType) (A : tbuta r Sig state) :
   A = restrict A (ltnSn r).
 Proof.
@@ -782,6 +811,11 @@ Definition intersection1 (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2) :
     transitions := merge (transitions A1) (transitions A2);
   |}.
 
+Lemma intersection1_uniq (A1 : buta r Sig st1) (A2 : buta r Sig st2) :
+  tbuta_uniq (intersection1 A1 A2).
+Proof.
+Admitted.
+
 Lemma intersection1_accepts (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2)
     (t : tterm r Sig) :
   accepts (intersection1 A1 A2) t = (accepts A1 t) && (accepts A2 t).
@@ -799,6 +833,11 @@ Variables (st1 st2 : finType).
 Definition intersection (A1 : tbuta r1 Sig st1) (A2 : tbuta r2 Sig st2) :
     tbuta (minn r1 r2) Sig (prod_finType st1 st2) :=
   intersection1 (restrict A1 (geq_minl r1 r2)) (restrict A2 (geq_minr r1 r2)).
+
+Lemma intersection_uniq (A1 : buta r1 Sig st1) (A2 : buta r2 Sig st2) :
+  tbuta_uniq (intersection A1 A2).
+Proof.
+Admitted.
 
 Lemma intersection_accepts (A1 : tbuta r1 Sig st1) (A2 : tbuta r2 Sig st2)
     (t : tterm (minn r1 r2) Sig) :

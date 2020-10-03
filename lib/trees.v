@@ -150,7 +150,13 @@ Qed.
 Definition maxo (m n : [r]) : [r] :=
   if m < n then n else m.
 
+Lemma maxn_maxo (m n : [r]) : maxn m n = maxo m n.
+Proof. by rewrite /maxo /maxn; case: ifP. Qed.
+
 Definition So (k : [r]) : [r.+1] := @Ordinal r.+1 k.+1 (ltn_ord k).
+
+Lemma S_So (k : [r]) : k.+1 = So k.
+Proof. by []. Qed.
 
 Definition subon (j : [r]) (n : nat) : [r].
 Proof.
@@ -159,6 +165,8 @@ Proof.
 Defined.
 Notation "j -on k" := (subon j k) (at level 50, format "j  -on  k").
 
+Lemma subn_subon (j : [r]) (n : nat) : j - n = j -on n.
+Proof. by []. Qed.
 
 Definition well_numbered_single (U : ptree r) (s : [r*]) : bool :=
   match s with
@@ -215,6 +223,26 @@ Record tree := Tree {
 (* p is a parent of q                                                          *)
 Definition is_parent (p q : [r*]) : bool := (parent q == p) && (q != [::]).
 
+Lemma is_parentP (p q : [r*]) :
+  reflect
+    (exists i : [r], q = i :: p)
+    (is_parent p q).
+Proof.
+  rewrite /is_parent /parent.
+  apply: (iffP idP).
+    case: q => [/andP [] //| i q /= /andP []].
+    by rewrite drop0 => /eqP -> _; exists i.
+  by move=> [i ->] /=; rewrite drop0 eqxx.
+Qed.
+
+Lemma is_parent_strict (p : [r*]) :
+  ~ (is_parent p p).
+Proof.
+  move=> /is_parentP [i /eqP].
+  elim: p => [// | x p IH].
+  by rewrite eqseq_cons => /andP [/eqP ->].
+Qed.
+
 (* p is a child of q                                                           *)
 Definition is_child (p q : [r*]) : bool := is_parent q p.
 
@@ -254,6 +282,12 @@ Lemma is_strict_ancestorW (p q : [r*]) :
   is_strict_ancestor p q -> is_ancestor p q.
 Proof. by move=> /andP []. Qed.
 
+Lemma is_parent_is_strict_ancestor (p q : [r*]) :
+  is_parent p q -> is_strict_ancestor p q.
+Proof.
+  by move=> /is_parentP [i ->]; rewrite /is_strict_ancestor subSnn /= drop0.
+Qed.
+
 Lemma self_ancestor (s : [r*]) : s \in ancestors s.
 Proof.
   rewrite /ancestors.
@@ -273,8 +307,22 @@ Proof.
   by move=> [s ->]; rewrite /is_ancestor size_cat addnmBm drop_size_cat.
 Qed.
 
-Definition children  (U : ptree r) (p : [r*]) : seq [r*] :=
-  [seq s <- U | is_parent p s].
+Definition children (U : ptree r) (p : [r*]) : seq [r*] :=
+  filter (is_parent p) U.
+
+Lemma childrenP (U : ptree r) (p c : [r*]) :
+  reflect
+    (is_parent p c /\ c \in U)
+    (c \in children U p).
+Proof.
+  by rewrite mem_filter; apply: (iffP andP).
+Qed.
+
+Lemma children_mem (U : ptree r) (p c : [r*]) :
+  c \in children U p -> c \in U.
+Proof.
+  by move=> /childrenP [].
+Qed.
 
 Definition height (U : ptree r) : nat :=
   \max_(p <- U) size p.
@@ -289,16 +337,30 @@ Definition arity (U : ptree r.+1) (p : [r.+1*]) : [r.+2] :=
   if children U p is [::] then ord0 else
     So (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
 
+Definition arity_nat (U : ptree r.+1) (p : [r.+1*]) : nat :=
+  if children U p is [::] then 0 else
+    (\max_(c <- children U p) head ord0 c).+1.
+
+Lemma bmaxn_bmaxo (n : nat) (s : seq [n.+1*]) (F : [n.+1*] -> [n.+1]) :
+  \max_(x <- s) F x = \big[@maxo n.+1/ord0]_(x <- s) F x.
+Proof.
+  elim: s => [| x s IH]; first by rewrite 2!big_nil.
+  by rewrite 2!big_cons IH maxn_maxo.
+Qed.
+
+Lemma arity_val (U : ptree r.+1) (p : [r.+1*]) :
+  arity_nat U p = arity U p.
+Proof.
+  rewrite /arity_nat /arity.
+  case: (children U p) => [// | c cs].
+  by rewrite -S_So -bmaxn_bmaxo.
+Qed.
+
 Lemma arity0 (s : [r.+1*]) :
   arity [:: [::]] s = ord0.
 Proof.
   by rewrite /arity /= /is_parent /= andbF.
 Qed.
-
-Lemma arity_size (U : ptree r.+1) (p : [r.+1*]) :
-  arity U p = size (children U p) :> nat.
-Proof.
-Admitted.
 
 Definition children_from_arity (p : [r*]) (k : [r.+1]) : k.-tuple [r*] :=
   [tuple (wdord i) :: p | i < k].
@@ -316,20 +378,6 @@ Qed.
 Lemma children_from_arity0 (p : [r*]) :
   children_from_arity p ord0 = [tuple].
 Proof. by rewrite tuple0. Qed.
-
-Lemma mem_child (U : ptree r.+1) (p : [r.+1*]) (i : [arity U p]) :
-  tree_like U -> p \in U -> wdord i :: p \in U.
-Proof.
-  move=> /tree_likeP [_ /well_numberedP wnU _] pinU.
-  move: i.
-  rewrite /arity.
-  case eqchildern : (children U p) => [| c cs]; first by case.
-  rewrite -eqchildern => {eqchildern c cs}.
-  set max := \big[_/_]_(_ <- _) _.
-  move=> i; apply: (@wnU _ max _ (wdord i)).
-    admit.
-  admit.
-Admitted.
 
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
   filter (is_ancestor p) U.
@@ -370,28 +418,34 @@ Proof.
 Admitted.
 
 Definition is_leaf (U : ptree r) (s : [r*]) :=
-  all (fun p => ~~ (is_strict_ancestor s p)) U.
+  all (fun p => ~~ (is_parent s p)) U.
 
 Lemma height_is_leaf (U : ptree r) (p : [r*]) :
     size p = height U ->
   is_leaf U p.
 Proof.
   rewrite /height => size_max.
-  apply /allP => /= q qinU.
-  apply /negP => /andP [szneq0 /eqP eqpdrop]; move: szneq0.
-  suff -> : size q - size p == 0 by [].
+  apply /allP => /= q qinU; apply /negP => parentpq.
+  have /andP [szneq0 /eqP eqpdrop] := is_parent_is_strict_ancestor parentpq.
+  move: szneq0; suff -> : size q - size p == 0 by [].
   by rewrite subn_eq0 size_max leq_bigmax_list.
 Qed.
 
 Lemma children_is_leaf (U : ptree r) (l : [r*]) :
-  is_leaf U l -> children U l = [::].
+  is_leaf U l = (children U l == [::]).
 Proof.
-  move=> /allP /= lleaf; rewrite /children -(filter_pred0 U).
-  apply: eq_in_filter => /= p pinU; rewrite /is_parent.
-  apply /andP => [[/eqP parentpisl pneqnil]].
-  have := lleaf p pinU; apply /negP /negPn /andP.
-  move: parentpisl; rewrite /parent => <-.
-  by rewrite size_drop subKn //; move: pinU pneqnil; case: p.
+  apply /idP /idP.
+    move=> /allP /= lleaf; rewrite /children -(filter_pred0 U); apply /eqP.
+    apply: eq_in_filter => /= p pinU; rewrite /is_parent.
+    apply /andP => [[/eqP parentpisl pneqnil]].
+    have := lleaf p pinU; apply /negP /negPn /andP.
+    by rewrite parentpisl pneqnil.
+  rewrite /children /is_leaf => childrennil; apply /all_filterP.
+  rewrite -{2}(filter_predT U).
+  apply: eq_in_filter => /= p pinU.
+  apply /negP => parentlp; move: childrennil; apply /negP.
+  rewrite -has_filter; apply /hasP => /=.
+  by exists p.
 Qed.
 
 Definition leaves (U : ptree r) : seq [r*] :=
@@ -411,7 +465,7 @@ End Strings2.
 Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :
   is_leaf U l -> arity U l = ord0.
 Proof.
-  by move=> lleaf; rewrite /arity children_is_leaf.
+  by rewrite children_is_leaf /arity => /eqP ->.
 Qed.
 
 (*
@@ -438,52 +492,75 @@ Admitted.
 
 *)
 
-Lemma children_arityP (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
-    tree_like U ->
-  perm_eq (children U p) (children_from_arity p (arity U p)).
+Definition children_indexes (r : nat) (U : ptree r.+1) (p : [r.+1*])
+    : seq [r.+1] :=
+  [seq head ord0 c | c <- children U p].
+
+Lemma children_map (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+  children U p = [seq i :: p | i <- children_indexes U p].
 Proof.
-  move=> /and3P [scU /well_numberedP wnU uniqU].
-  rewrite /children /children_from_arity.
-  apply: uniq_perm; first by apply: filter_uniq.
-    rewrite map_inj_in_uniq ?enum_uniq //= => n m.
-    (*
-    rewrite 2!mem_iota add0n => /andP [_ nlta] /andP [_ mlta] /eqP inpeqimp.
-    have : @inord r n = @inord r m :> nat.
-      congr val; move: inpeqimp.
-      by rewrite eqseq_cons => /andP [/eqP].
-    *)
-    admit.
-    (*
-    rewrite inordK; last by rewrite (ltn_trans nlta) // arity_tree_like.
-    by rewrite inordK; last by rewrite (ltn_trans mlta) // arity_tree_like.
-    *)
-  move=> /= s.
-  apply /(@sameP (s \in [seq s0 <- U | is_parent p s0])); first by apply: idP.
-  rewrite mem_filter.
-  apply: (iffP idP).
-    (*
-    move=> /mapP /= [i]; rewrite mem_iota => /andP [_ ilta] ->.
-    apply /andP; split.
-      by rewrite /is_parent andbT /parent /= drop0.
-    *)
-    admit.
-  rewrite /is_parent.
-  case: s; first by rewrite andbF.
-  move=> j s.
-  rewrite parent_cons => /andP [/andP [/eqP -> _] jpinU].
-  apply /mapP => /=.
+Admitted.
+
+Lemma max_in_children (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+   ~ is_leaf U p ->
+ (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c) :: p \in children U p.
+Proof.
   (*
-  exists j; last by rewrite inord_val.
-  rewrite mem_iota; apply /andP; split => //.
-  rewrite add0n /arity /children.
-  rewrite size_filter.
-  case: ltnP => // aUplej.
-  *)
-  (*
-  set a := Ordinal (arity_tree_like U p).
-  have := wnU _ _ jpinU a.
+  Search is_leaf.
+  rewrite {2}children_map /children_indexes; apply: map_f.
+  rewrite /max ischildren.
+  Search (\max_(_ <- _) _) mem.
   *)
 Admitted.
+
+Lemma children_arityP (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+    tree_like U ->
+    p \in U ->
+  perm_eq (children U p) (children_from_arity p (arity U p)).
+Proof.
+  move=> /tree_likeP [scU /well_numberedP wnU uniqU] pinU.
+  apply: uniq_perm; first by apply: filter_uniq.
+    rewrite map_inj_in_uniq ?enum_uniq //= => n m _ _ /eqP.
+    by rewrite eqseq_cons wdord_eq => /andP [/eqP -> _].
+  move=> /= s.
+  apply /idP /idP.
+    move=> /childrenP [/is_parentP [j ->] sinU].
+    apply /children_from_arityP.
+    (* need to show that j < arity U p *)
+    eexists.
+    apply /eqP; rewrite eqseq_cons eqxx andbT.
+    admit.
+  move=> /children_from_arityP [i ->].
+  apply /childrenP; split.
+    by apply /is_parentP; exists (wdord i).
+  move: i; rewrite /arity.
+  case ischildren : (children U p) => [| c cs]; first by move=> [].
+  rewrite -ischildren.
+  set max := \big[_/_]_(_ <- _) _ => i.
+  apply: (wnU _ max); last by move: i => [].
+  apply: (@children_mem _ _ p); rewrite max_in_children //.
+  admit.
+Admitted.
+
+Lemma arity_size (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+    tree_like U ->
+    p \in U ->
+  arity U p = size (children U p) :> nat.
+Proof.
+  move=> tlikeU pinU.
+  rewrite (perm_size (children_arityP tlikeU pinU)).
+  by rewrite /children_from_arity size_map size_enum_ord.
+Qed.
+
+Lemma mem_child (r : nat) (U : ptree r.+1) (p : [r.+1*]) (i : [arity U p]) :
+  tree_like U -> p \in U -> wdord i :: p \in U.
+Proof.
+  move=> tlikeU pinU.
+  apply: (@children_mem _ _ p).
+  rewrite (perm_mem (children_arityP tlikeU pinU)).
+  apply /children_from_arityP.
+  by exists i.
+Qed.
 
 (*
 Program Fixpoint test (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
@@ -498,7 +575,7 @@ Admit Obligations.
 *)
 
 Unset Program Cases.
-Program Fixpoint child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
+(*Program Fixpoint*) Lemma child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
     (tlikeU : tree_like U)
     (Pleaves : forall l : [r.+1*], l \in U ->
       is_leaf U l -> P l
@@ -507,7 +584,10 @@ Program Fixpoint child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
         (forall i : [arity U p], P (wdord i :: p)) ->
       P p
     )
-  (p : [r.+1*]) (pinU : p \in U) {measure (height U - size p)} : P p :=
+  (p : [r.+1*]) (pinU : p \in U) (*{measure (height U - size p)}*) : P p.
+Admitted.
+(*
+  :=
   match Sumbool.sumbool_of_bool (is_leaf U p) with
   | left leafp => Pleaves p pinU leafp
   | right notleafp =>
@@ -520,5 +600,6 @@ Next Obligation.
   apply /eqP => size_max (*{Heq_anonymous}*); move: notleafp.
   move => {Pchildren child_ind1}.
   by rewrite height_is_leaf.
-(* FIXME takes about 3 hours to compile *)
+(* FIXME takes about 5 hours to compile *)
 Qed.
+*)
