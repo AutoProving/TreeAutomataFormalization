@@ -153,6 +153,40 @@ Definition maxo (m n : [r]) : [r] :=
 Lemma maxn_maxo (m n : [r]) : maxn m n = maxo m n.
 Proof. by rewrite /maxo /maxn; case: ifP. Qed.
 
+Lemma maxo_idPr (m n : [r]) : reflect (maxo m n = n) (m <= n).
+Proof.
+  rewrite /maxo; case: ifP.
+    by move=> /ltnW ->; apply: (iffP idP).
+  move=> /negP /negP; rewrite -leqNgt => nlem.
+  apply: (iffP idP) => [mlen | -> //]; apply /eqP.
+  move: nlem mlen; case: ltngtP => // eqnm _ _.
+  by rewrite -val_eqE /=; apply /eqP.
+Qed.
+
+Lemma maxoC : commutative maxo.
+Proof.
+  move=> m n; rewrite /maxo; case: ifP; case: ifP; case: ltngtP => //.
+  by move=> eqnm _ _; apply /eqP; rewrite -val_eqE /=; apply /eqP.
+Qed.
+
+Lemma maxo_idPl (m n : [r]) : reflect (maxo m n = m) (n <= m).
+Proof.
+  by rewrite maxoC; apply: maxo_idPr.
+Qed.
+
+Definition mino (m n : [r]) : [r] :=
+  if m < n then m else n.
+
+Lemma minn_mino (m n : [r]) : minn m n = mino m n.
+Proof. by rewrite /mino /minn; case: ifP. Qed.
+
+Lemma ltoP (m n : [r]) :
+  ltn_xor_geq m n (mino n m) (mino m n)
+    (maxo n m) (maxo m n) (n <= m) (m < n).
+Proof.
+  by rewrite -2!minn_mino -2!maxn_maxo; apply: ltnP.
+Qed.
+
 Definition So (k : [r]) : [r.+1] := @Ordinal r.+1 k.+1 (ltn_ord k).
 
 Lemma S_So (k : [r]) : k.+1 = So k.
@@ -494,24 +528,35 @@ Admitted.
 
 Definition children_indexes (r : nat) (U : ptree r.+1) (p : [r.+1*])
     : seq [r.+1] :=
-  [seq head ord0 c | c <- children U p].
+  map (head ord0) (children U p).
 
 Lemma children_map (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
   children U p = [seq i :: p | i <- children_indexes U p].
 Proof.
-Admitted.
+  rewrite -map_comp.
+  by symmetry; apply: map_id_in => /= c /childrenP [/is_parentP [i ->] _].
+Qed.
 
 Lemma max_in_children (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
    ~ is_leaf U p ->
  (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c) :: p \in children U p.
 Proof.
-  (*
-  Search is_leaf.
+  rewrite children_is_leaf => notnil.
   rewrite {2}children_map /children_indexes; apply: map_f.
-  rewrite /max ischildren.
-  Search (\max_(_ <- _) _) mem.
-  *)
-Admitted.
+  move: notnil; elim: (children U p) => [// | c cs IH _].
+  rewrite big_cons map_cons.
+  move: IH; case: cs => [_ | c' cs IH].
+    rewrite big_nil /=.
+    case: (ltoP (head ord0 c) ord0).
+      by rewrite ltn0.
+    by move=> /maxo_idPl ->; rewrite in_cons eqxx.
+  set max := \big[_/_]_(_ <- _) _.
+  case: (ltoP (head ord0 c) max).
+    move=> /ltnW /maxo_idPr ->.
+    by rewrite in_cons IH // orbT.
+  move=> /maxo_idPl ->.
+  by rewrite in_cons eqxx.
+Qed.
 
 Lemma children_arityP (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
     tree_like U ->
@@ -526,9 +571,17 @@ Proof.
   apply /idP /idP.
     move=> /childrenP [/is_parentP [j ->] sinU].
     apply /children_from_arityP.
-    (* need to show that j < arity U p *)
-    eexists.
-    apply /eqP; rewrite eqseq_cons eqxx andbT.
+    case isarity : (arity U p) => [a alt].
+    move: a alt isarity; case => [lt0r2 isarity | n ltn1r2 isarity].
+      exfalso.
+      (* the arity cannot be 0 because children is not empty (see above) *)
+      admit.
+    exists (inord j).
+    apply /eqP; rewrite eqseq_cons eqxx andbT; apply /eqP /val_eqP /eqP => /=.
+    rewrite inordK //.
+    have -> : n.+1 = (Ordinal ltn1r2) by [].
+    rewrite -isarity -arity_val.
+    (* we probably need some forgotten information *)
     admit.
   move=> /children_from_arityP [i ->].
   apply /childrenP; split.
@@ -539,7 +592,7 @@ Proof.
   set max := \big[_/_]_(_ <- _) _ => i.
   apply: (wnU _ max); last by move: i => [].
   apply: (@children_mem _ _ p); rewrite max_in_children //.
-  admit.
+  by rewrite children_is_leaf ischildren.
 Admitted.
 
 Lemma arity_size (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
