@@ -4,6 +4,8 @@ Set Warnings "notation-overridden, notation-incompatible-format".
 
 Require Import Coq.Program.Wf.
 
+Require Import basic.
+
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -62,17 +64,6 @@ Unset Printing Implicit Defensive.
 (*      connected U == there is only one string in U without its parent in U   *)
 (*                                                                             *)
 
-
-Lemma addnmBm (n m : nat) : n + m - m = n.
-Proof. by rewrite -{2}[m]/(0 + m) subnDr subn0. Qed.
-
-(* TODO pull-request? *)
-Lemma leq_bigmax_list (T : eqType) (w : seq T) (F : T -> nat) (j : T) :
-    j \in w ->
-  F j <= \max_(i <- w) F i.
-Proof.
-  by move=> /seq_tnthP [n ->]; rewrite big_tnth leq_bigmax.
-Qed.
 
 
 (*   Unlike in the paper specification, here [r] is the finite set of numbers  *)
@@ -298,18 +289,16 @@ Definition arity (U : ptree r.+1) (p : [r.+1*]) : [r.+2] :=
   if children U p is [::] then ord0 else
     So (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
 
+Lemma arity0 (s : [r.+1*]) :
+  arity [:: [::]] s = ord0.
+Proof.
+  by rewrite /arity /= /is_parent /= andbF.
+Qed.
+
 Lemma arity_size (U : ptree r.+1) (p : [r.+1*]) :
   arity U p = size (children U p) :> nat.
 Proof.
 Admitted.
-
-(*
-Definition children_from_arity (p : [r.+1*]) (k : nat) :=
-  [seq (inord i) :: p | i <- iota 0 k].
-
-Definition children_from_arity_ord (p : [r*]) (k : [r]) : seq [r*] :=
-  [seq (wdord i) :: p | i <- ord_enum k].
-*)
 
 Definition children_from_arity (p : [r*]) (k : [r.+1]) : k.-tuple [r*] :=
   [tuple (wdord i) :: p | i < k].
@@ -323,6 +312,10 @@ Proof.
     by move=> /tnthP [i]; rewrite tnth_map tnth_ord_tuple => ->; exists i.
   by move=> [i ->]; apply /tnthP; exists i; rewrite tnth_map tnth_ord_tuple.
 Qed.
+
+Lemma children_from_arity0 (p : [r*]) :
+  children_from_arity p ord0 = [tuple].
+Proof. by rewrite tuple0. Qed.
 
 Lemma mem_child (U : ptree r.+1) (p : [r.+1*]) (i : [arity U p]) :
   tree_like U -> p \in U -> wdord i :: p \in U.
@@ -390,6 +383,17 @@ Proof.
   by rewrite subn_eq0 size_max leq_bigmax_list.
 Qed.
 
+Lemma children_is_leaf (U : ptree r) (l : [r*]) :
+  is_leaf U l -> children U l = [::].
+Proof.
+  move=> /allP /= lleaf; rewrite /children -(filter_pred0 U).
+  apply: eq_in_filter => /= p pinU; rewrite /is_parent.
+  apply /andP => [[/eqP parentpisl pneqnil]].
+  have := lleaf p pinU; apply /negP /negPn /andP.
+  move: parentpisl; rewrite /parent => <-.
+  by rewrite size_drop subKn //; move: pinU pneqnil; case: p.
+Qed.
+
 Definition leaves (U : ptree r) : seq [r*] :=
   [seq s <- U | is_leaf U s].
 
@@ -403,6 +407,12 @@ Lemma connected_correct (S : ptree r) (p : [r*]) :
 Proof. by case: p. Qed.
 
 End Strings2.
+
+Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :
+  is_leaf U l -> arity U l = ord0.
+Proof.
+  by move=> lleaf; rewrite /arity children_is_leaf.
+Qed.
 
 (*
 Definition arity2 (r : nat) (U : ptree r.+1) (p : [r.+1*]) : nat :=
@@ -490,14 +500,16 @@ Admit Obligations.
 Unset Program Cases.
 Program Fixpoint child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
     (tlikeU : tree_like U)
-    (Pleaves : forall l : [r.+1*], is_leaf U l -> P l)
+    (Pleaves : forall l : [r.+1*], l \in U ->
+      is_leaf U l -> P l
+    )
     (Pchildren : forall p : [r.+1*], p \in U ->
         (forall i : [arity U p], P (wdord i :: p)) ->
       P p
     )
   (p : [r.+1*]) (pinU : p \in U) {measure (height U - size p)} : P p :=
   match Sumbool.sumbool_of_bool (is_leaf U p) with
-  | left leafp => Pleaves p leafp
+  | left leafp => Pleaves p pinU leafp
   | right notleafp =>
     Pchildren p pinU (fun i => child_ind1 tlikeU Pleaves Pchildren (mem_child i tlikeU pinU))
   end.

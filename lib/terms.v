@@ -4,6 +4,7 @@ Set Warnings "notation-overridden, notation-incompatible-format".
 
 Require Import Coq.Program.Wf.
 
+Require Import basic.
 Require Import trees.
 
 Set Implicit Arguments.
@@ -307,6 +308,66 @@ Definition tchildren (t : tterm) : seq tterm :=
 
 End Tterms.
 
+Lemma arity_positions (r : nat) (Sigma : finType) (a : Sigma) (k : [r.+2])
+    (f : (tterm r.+1 Sigma)^k) :
+  arity (positions (tnode a f)) [::] = k.
+Proof.
+  (*
+  rewrite /arity /=.
+  case eqordenum : (ord_enum k) => [/=| i w].
+    move: eqordenum; rewrite /ord_enum /=.
+    case: {+}k; case => [/= i lti | n ltn1 H]; first by apply /eqP.
+    exfalso; move: H.
+    Opaque pmap.
+    rewrite /= -cat1s pmap_cat.
+    Transparent pmap.
+    rewrite /= /insub /=.
+    Search _ pmap cat.
+    Search _ cat cons.
+
+    have : iota 0 (Ordinal ltn1) <> [::].
+      rewrite /=.
+
+
+  move: f; case: k; case => [? ? /= | /=]; first by apply /eqP.
+  move=> n ltnr f.
+  rewrite /ord_enum /=.
+  set cs := children _ _.
+*)
+Admitted.
+
+Lemma children_from_arity_positions (r : nat) (Sigma : finType) (t : tterm r.+1 Sigma) (p q : [r.+1*]) :
+    p \in positions t ->
+    q \in children_from_arity p (arity (positions t) p) ->
+  q \in positions t.
+Proof.
+  elim/tterm_nind: t => [a /= | a k f IH].
+    by rewrite arity0 children_from_arity0.
+  move=> pinpos /children_from_arityP [i ->].
+Admitted.
+
+Lemma child_ind (r : nat) (Sigma : finType)
+  (P : [r.+1*] -> Prop) (Q : tterm r.+1 Sigma -> Prop)
+  (Pleaves : forall (t : tterm r.+1 Sigma), Q t ->
+    forall (l : [r.+1*]), l \in positions t ->
+      is_leaf (positions t) l -> P l
+  )
+  (Pchildren : forall (t : tterm r.+1 Sigma), Q t ->
+    forall (p : [r.+1*]), p \in positions t ->
+      (forall q : [r.+1*],
+        q \in children_from_arity p (arity (positions t) p) -> P q
+      ) -> P p
+  )
+  (t : tterm r.+1 Sigma) (Qt : Q t) (p : [r.+1*]) (pinpos : p \in positions t) : P p.
+Proof.
+  apply: (@child_ind1 _ (positions t)) => //.
+  - by apply: positions_tree_like.
+  - move=> l lleaf; apply: (Pleaves t) => //.
+    admit. (* TODO need to add this as hypothesis in child_ind1 *)
+  move=> q qinpos IH.
+  by apply: (Pchildren t) => // c /children_from_arityP [i ->]; apply: IH.
+Admitted.
+
 Section ToTtrees.
 
 Definition subtrees_of_ptree (r : nat) (U : ptree r) (k : [r.+1]) :
@@ -515,12 +576,6 @@ Definition deterministic (A : tbuta) : bool :=
     count (fun tr => tr.1 == (qs, a)) (transitions A k) <= 1
   ].
 
-Lemma sub_in_count (T : eqType) (a1 a2 : pred T) (s : seq T) :
-    {in s, subpred a1 a2} ->
-  count a1 s <= count a2 s.
-Proof.
-Admitted.
-
 Lemma deterministicP (A : tbuta) :
   reflect
     (forall (k : [r.+1]) (qs : k.-tuple state) (a : Sigma) (q1 q2 : state),
@@ -656,114 +711,6 @@ Definition unambiguous (r : nat) (Sigma state : finType)
   (A : tbuta r.+1 Sigma state) (d : Sigma) : Prop :=
   forall (t : tterm r.+1 Sigma) (rho1 rho2 : [r.+1*] -> state),
     wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
-
-Lemma eq_in_map_tuple (T1 : eqType) (T2 : Type) (f1 f2 : T1 -> T2) (k : nat)
-      (s : k.-tuple T1) :
-   {in s, f1 =1 f2} <->
-   [tuple of [seq f1 i | i <- s]] = [tuple of [seq f2 i | i <- s]].
-Proof.
-  split => [eq1f1f2 | eqt12].
-    apply: eq_from_tnth => i; rewrite 2!tnth_map.
-    by apply: eq1f1f2; apply: mem_tnth.
-  rewrite eq_in_map.
-  rewrite -[[seq f1 _ | _ <- _]]/(val [tuple of [seq f1 _ | _ <- _]]).
-  rewrite -[[seq f2 _ | _ <- _]]/(val [tuple of [seq f2 _ | _ <- _]]).
-  by congr val.
-Qed.
-
-Lemma arity_positions (r : nat) (Sigma : finType) (a : Sigma) (k : [r.+2])
-    (f : (tterm r.+1 Sigma)^k) :
-  arity (positions (tnode a f)) [::] = k.
-Proof.
-  (*
-  rewrite /arity /=.
-  case eqordenum : (ord_enum k) => [/=| i w].
-    move: eqordenum; rewrite /ord_enum /=.
-    case: {+}k; case => [/= i lti | n ltn1 H]; first by apply /eqP.
-    exfalso; move: H.
-    Opaque pmap.
-    rewrite /= -cat1s pmap_cat.
-    Transparent pmap.
-    rewrite /= /insub /=.
-    Search _ pmap cat.
-    Search _ cat cons.
-
-    have : iota 0 (Ordinal ltn1) <> [::].
-      rewrite /=.
-
-
-  move: f; case: k; case => [? ? /= | /=]; first by apply /eqP.
-  move=> n ltnr f.
-  rewrite /ord_enum /=.
-  set cs := children _ _.
-*)
-Admitted.
-
-Lemma child_ind (r : nat) (Sigma : finType)
-  (P : [r.+1*] -> Prop) (Q : tterm r.+1 Sigma -> Prop)
-  (Pleaves : forall (t : tterm r.+1 Sigma), Q t ->
-    forall (l : [r.+1*]), l \in positions t ->
-      is_leaf (positions t) l -> P l
-  )
-  (Pchildren : forall (t : tterm r.+1 Sigma), Q t ->
-    forall (p : [r.+1*]), p \in positions t ->
-      (forall q : [r.+1*],
-        q \in children_from_arity p (arity (positions t) p) -> P q
-      ) -> P p
-  )
-  (t : tterm r.+1 Sigma) (Qt : Q t) (p : [r.+1*]) (pinpos : p \in positions t) : P p.
-Proof.
-  apply: (@child_ind1 _ (positions t)) => //.
-  - by apply: positions_tree_like.
-  - move=> l lleaf; apply: (Pleaves t) => //.
-    admit. (* TODO need to add this as hypothesis in child_ind1 *)
-  move=> q qinpos IH.
-  by apply: (Pchildren t) => // c /children_from_arityP [i ->]; apply: IH.
-Admitted.
-
-Lemma children_is_leaf (r : nat) (U : ptree r) (l : [r*]) :
-  is_leaf U l -> children U l = [::].
-Proof.
-  move=> /allP /= lleaf; rewrite /children -(filter_pred0 U).
-  apply: eq_in_filter => /= p pinU; rewrite /is_parent.
-  apply /andP => [[/eqP parentpisl pneqnil]].
-  have := lleaf p pinU; apply /negP /negPn /andP.
-  move: parentpisl; rewrite /parent => <-.
-  by rewrite size_drop subKn //; move: pinU pneqnil; case: p.
-Qed.
-
-Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :
-  is_leaf U l -> arity U l = ord0.
-Proof.
-  by move=> lleaf; rewrite /arity children_is_leaf.
-Qed.
-
-(* TODO *)
-Lemma report_bug X Y (f g : X -> Y) :
-  [tuple of map f [tuple]] = [tuple of map g [tuple]].
-Proof.
-  by rewrite tuple0; symmetry; rewrite tuple0.
-Qed.
-
-Lemma children_from_arity0 (r : nat) (p : [r*]) :
-  children_from_arity p ord0 = [tuple].
-Proof. by rewrite tuple0. Qed.
-
-Lemma arity0 (r : nat) (s : [r.+1*]) :
-  arity [:: [::]] s = ord0.
-Proof.
-  by rewrite /arity /= /is_parent /= andbF.
-Qed.
-
-Lemma children_from_arity_positions (r : nat) (Sigma : finType) (t : tterm r.+1 Sigma) (p q : [r.+1*]) :
-    p \in positions t ->
-    q \in children_from_arity p (arity (positions t) p) ->
-  q \in positions t.
-Proof.
-  elim/tterm_nind: t => [a /= | a k f IH].
-    by rewrite arity0 children_from_arity0.
-  move=> pinpos /children_from_arityP [i ->].
-Admitted.
 
 Lemma unambiguous_deterministic (r : nat) (Sigma state : finType)
   (A : tbuta r.+1 Sigma state) (d : Sigma) :

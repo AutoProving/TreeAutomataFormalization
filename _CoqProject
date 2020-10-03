@@ -1,4 +1,5 @@
 -R . Top
 
+lib/basic.v
 lib/trees.v
 lib/terms.v
