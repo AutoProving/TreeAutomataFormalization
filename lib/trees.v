@@ -277,6 +277,12 @@ Proof.
   by rewrite eqseq_cons => /andP [/eqP ->].
 Qed.
 
+Lemma is_parent_trivial (p : [r*]) (j : [r]) :
+  is_parent p (j :: p).
+Proof.
+  by apply /is_parentP; exists j.
+Qed.
+
 (* p is a child of q                                                           *)
 Definition is_child (p q : [r*]) : bool := is_parent q p.
 
@@ -569,20 +575,19 @@ Proof.
     by rewrite eqseq_cons wdord_eq => /andP [/eqP -> _].
   move=> /= s.
   apply /idP /idP.
+    case ischildren : (children U p) => [// | c cs]; rewrite -ischildren.
     move=> /childrenP [/is_parentP [j ->] sinU].
     apply /children_from_arityP.
     case isarity : (arity U p) => [a alt].
     move: a alt isarity; case => [lt0r2 isarity | n ltn1r2 isarity].
-      exfalso.
-      (* the arity cannot be 0 because children is not empty (see above) *)
-      admit.
+      by exfalso; move: isarity; rewrite /arity ischildren.
     exists (inord j).
     apply /eqP; rewrite eqseq_cons eqxx andbT; apply /eqP /val_eqP /eqP => /=.
     rewrite inordK //.
     have -> : n.+1 = (Ordinal ltn1r2) by [].
-    rewrite -isarity -arity_val.
-    (* we probably need some forgotten information *)
-    admit.
+    rewrite -isarity -arity_val /arity_nat ischildren -ischildren.
+    rewrite -[j]/(head ord0 (j :: p)); apply: leq_bigmax_list.
+    by apply /childrenP; rewrite is_parent_trivial sinU.
   move=> /children_from_arityP [i ->].
   apply /childrenP; split.
     by apply /is_parentP; exists (wdord i).
@@ -593,7 +598,7 @@ Proof.
   apply: (wnU _ max); last by move: i => [].
   apply: (@children_mem _ _ p); rewrite max_in_children //.
   by rewrite children_is_leaf ischildren.
-Admitted.
+Qed.
 
 Lemma arity_size (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
     tree_like U ->
