@@ -183,7 +183,7 @@ Fixpoint positions (t : tterm) : ptree r :=
   match t with
   | tleaf _ => [:: [::]]
   | tnode _ k ts =>
-      [::] :: [seq (wdord j) :: p  |
+      [::] :: [seq rcons p (wdord j)  |
         j <- ord_enum k,
         p <- positions (ts j)
       ]
@@ -193,7 +193,7 @@ Fixpoint positions_sig (t : tterm) : seq ([r*] * Sigma) :=
   match t with
   | tleaf a => [:: ([::], a)]
   | tnode a k ts =>
-      ([::], a) :: [seq ((wdord j) :: pa.1, pa.2) |
+      ([::], a) :: [seq (rcons pa.1 (wdord j), pa.2) |
         j <- ord_enum k,
         pa <- positions_sig (ts j)
       ]
@@ -230,10 +230,14 @@ Proof.
   by rewrite /f; apply /eqP; apply: nthpossig.
 Qed.
 
+Lemma positions_nil (t : tterm) :
+  [::] \in positions t.
+Proof. by case: t. Qed.
+
 Lemma positions_tnode (a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*]) :
     p \in positions (tnode a f) ->
   p = [::] \/
-    exists (j : [k]) (q : [r*]), p = wdord j :: q /\ q \in positions (f j).
+    exists (j : [k]) (q : [r*]), p = rcons q (wdord j) /\ q \in positions (f j).
 Proof.
   rewrite /= in_cons => /orP [/eqP -> |]; first by left.
   move=> /allpairsPdep /= [j [q [_ qinposfj eqpjq]]].
@@ -242,18 +246,26 @@ Qed.
 
 Lemma positions_child (a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*])
     (j : [k]) :
-  (p \in positions (f j)) = (wdord j :: p \in positions (tnode a f)).
+  (p \in positions (f j)) = (rcons p (wdord j) \in positions (tnode a f)).
 Proof.
-  rewrite /= in_cons /=; apply /idP /idP => [pinposfj |].
-    by apply: allpairs_f_dep => //; apply mem_ord_enum.
+  rewrite /= in_cons rcons_nil /=; apply /idP /idP => [pinposfj |].
+   by apply: allpairs_f_dep => //; apply mem_ord_enum.
   move=> /allpairsPdep /= [i [q [_ qinposfi /eqP]]].
-  rewrite eqseq_cons => /andP [wdij /eqP ->]; move: wdij.
+  rewrite eqseq_rcons => /andP [/eqP -> wdij]; move: wdij.
   by rewrite wdord_eq => /eqP ->.
+Qed.
+
+Lemma positions_last (a : Sigma) (k : [r.+1]) (f : tterm^k) (j : [r]) (p : [r*]) :
+    j :: p \in positions (tnode a f) ->
+  last j p < k.
+Proof.
+  rewrite /= in_cons /= => /allpairsPdep /= [i [q [_ qinpos /eqP]]].
+  by rewrite lastI eqseq_rcons => /andP [_ /eqP ->] /=; apply: ltn_ord.
 Qed.
 
 Lemma positions_tree_like (t : tterm) : tree_like (positions t).
 Proof.
-  rewrite /tree_like; apply /and3P; split.
+  apply /tree_likeP; split.
   - apply /suffix_closedP; case; first by case: t.
     elim/tterm_nind: t => //=.
     move=> _ k f IH j p i; rewrite 2!in_cons /= => /allpairsPdep /=.
@@ -262,13 +274,52 @@ Proof.
     exists l; exists (behead s); split => //.
       admit.
     admit.
-  - admit.
+  - apply /well_numberedP.
+    case: t => [// | a k f p [n ltnr] jpinpos]; case => [l lelr] /= leln.
+
+    apply /allpairsPdep => /=.
+    have ltlastk : (last (Ordinal lelr) p) < k.
+      admit.
+    exists (Ordinal ltlastk); exists (belast (Ordinal lelr) p); split.
+    + by apply: mem_ord_enum.
+    + rewrite (positions_child a).
+      (* here probably need an IH *)
+      admit.
+    + by rewrite lastI; congr rcons; apply /val_eqP.
+
+    (*
+    pose m := (n - l).
+    have eqlnm : l = n - m by rewrite subKn.
+    move: eqlnm lelr leln => ->; elim: m.
+      rewrite subn0 => ltnr' _.
+      by have -> : Ordinal ltnr' = Ordinal ltnr by apply /val_eqP.
+    move=> m IH; rewrite subnS => ltnm1r _.
+    have /= := jpinpos; rewrite 2!in_cons /=.
+    move=> /allpairsPdep /= [i [q [_ pinpos /eqP]]].
+    rewrite headI eqseq_cons => /andP [/eqP eqnhq /eqP eqpbq].
+    apply /allpairsPdep => /=.
+    have ltnm1k : (n - m).-1 < k.
+      admit.
+    exists (Ordinal ltnm1k); exists q; split; first by apply: mem_ord_enum.
+      admit.
+    apply /eqP; rewrite headI eqseq_cons; apply /andP; split.
+      apply /eqP /val_eqP => /=.
+    *)
+    (*
+    case: q => [| x q].
+      move=> /= nilinpos /eqP; rewrite eqseq_cons => /andP [/eqP eq1 /eqP eqpnil].
+      apply /allpairsPdep => /=.
+      have ltnm1k : (n - m).-1 < k by admit.
+      exists (Ordinal ltnm1k); exists [::]; split; first by apply: mem_ord_enum.
+        by apply: positions_nil.
+      by rewrite eqpnil /=; congr cons; apply /val_eqP.
+    *)
   - elim/tterm_nind: t => [// | a k ts IH /=].
     apply /andP; split.
       by apply /allpairsPdep => /= [[j [p [_ _]]]]; case p.
     apply: allpairs_uniq_dep; first exact: ord_enum_uniq.
       by move=> j _; apply: IH.
-    by move=> /= [j1 p1] [j2 p2] _ _ [/ord_inj -> ->].
+    by move=> [j1 p1] [j2 p2] _ _ /rcons_inj [p1e1p2 /ord_inj j1eqj2]; f_equal.
 
 (*
   - apply /suffix_closedP; case => [// | j p i].
@@ -288,14 +339,6 @@ Proof.
     by apply: wn klti.
  *)
 Admitted.
-
-Lemma positions_nil (t : tterm) :
-  [::] \in positions t.
-Proof.
-  apply: tree_like_nil.
-    by apply: positions_tree_like.
-  by case: t.
-Qed.
 
 Definition tchildren (t : tterm) : seq tterm :=
   match t with
