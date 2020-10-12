@@ -98,8 +98,8 @@ Unset Printing Implicit Defensive.
 (*    intersection A1' A2' == the intersection1 of the restrictions of A1' and *)
 (*                     A2' to the minumum between r1 and r2                    *)
 (*                                                                             *)
-(*   Let (A : tbuta r.+1 Sigma state) (t : tterm r.+1 Sigma) (d : Sigma)       *)
-(* (rho : [r.+1*] -> state) (rn : trun A t).                                   *)
+(*   Let (A : tbuta r.+1 Sigma state) (t t' : tterm r.+1 Sigma) (d : Sigma)    *)
+(* (rho : [r.+1*] -> state) (rn : trun A t) (rn' : trun A t').                 *)
 (*                                                                             *)
 (*                                     RUNS                                    *)
 (*  wfrun A t d rho == for each position p of t, if cs are the children of p,  *)
@@ -113,6 +113,8 @@ Unset Printing Implicit Defensive.
 (* reaches_transition rn k tr == the run rn reaches the k-transition k         *)
 (*  unambiguous A d == for each term t there is at most one rho such that      *)
 (*                     (wfrun A t d rho) holds                                 *)
+(* extends A t t' rn rn' d == there is a string p that can be appended to each *)
+(*                     position of t to obtain the behaviour of rn'            *)
 
 
 Section Tterms.
@@ -802,3 +804,19 @@ Proof.
 Qed.
 
 End Unambiguous.
+
+Section Runs2.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+Variable A : tbuta r.+1 Sigma state.
+
+Definition extends (t t' : tterm r.+1 Sigma) (rn : trun A t) (rn' : trun A t')
+    (d : Sigma) : Prop :=
+  exists p : [r.+1*], forall u : [r.+1*],
+      u \in positions t ->
+    (sig_at d t u = sig_at d t' (u ++ p))
+    /\ (trho rn u = trho rn' (u ++ p)).
+
+End Runs2.
