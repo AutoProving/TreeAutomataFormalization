@@ -2,7 +2,7 @@ Set Warnings "-notation-overridden, -notation-incompatible-format".
 From mathcomp Require Import all_ssreflect.
 Set Warnings "notation-overridden, notation-incompatible-format".
 
-Require Import Coq.Program.Wf.
+Require Import Wf_nat.
 
 Require Import basic.
 
@@ -620,20 +620,16 @@ Proof.
   by exists i.
 Qed.
 
-(*
-Program Fixpoint test (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
-    (tlikeU : tree_like U)
-    (PP : forall p, P p)
-  (p : [r.+1*]) {measure (size p)} : P p :=
-  match Sumbool.sumbool_of_bool (p == [::]) with
-  | left leafp => PP p
-  | right notleafp => PP p
-  end.
-Admit Obligations.
-*)
+Definition lth (r : nat) (U : ptree r.+1) (p q : [r.+1*]) : bool :=
+  height U - size p < height U - size q.
 
-Unset Program Cases.
-(*Program Fixpoint*) Lemma child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
+Lemma well_founded_lth (r : nat) (U : ptree r.+1) : well_founded (lth U).
+Proof.
+  apply: (@well_founded_lt_compat _ (fun p => height U - size p)).
+  by move=> p q /ltP.
+Qed.
+
+Lemma child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
     (tlikeU : tree_like U)
     (Pleaves : forall l : [r.+1*], l \in U ->
       is_leaf U l -> P l
@@ -642,22 +638,18 @@ Unset Program Cases.
         (forall i : [arity U p], P (wdord i :: p)) ->
       P p
     )
-  (p : [r.+1*]) (pinU : p \in U) (*{measure (height U - size p)}*) : P p.
-Admitted.
-(*
-  :=
-  match Sumbool.sumbool_of_bool (is_leaf U p) with
-  | left leafp => Pleaves p pinU leafp
-  | right notleafp =>
-    Pchildren p pinU (fun i => child_ind1 tlikeU Pleaves Pchildren (mem_child i tlikeU pinU))
-  end.
-Next Obligation.
-  apply /ltP; rewrite subnS ltn_predL subn_gt0 /height.
-  rewrite ltn_neqAle; apply /andP; split; last first.
-    by rewrite leq_bigmax_list.
-  apply /eqP => size_max (*{Heq_anonymous}*); move: notleafp.
-  move => {Pchildren child_ind1}.
+  (p : [r.+1*]) (pinU : p \in U) : P p.
+Proof.
+  move: p pinU.
+  apply: (well_founded_induction (well_founded_lth U)).
+  move=> p IH pinU.
+  have [leafp | notleafp ] := boolP (is_leaf U p).
+    by apply: Pleaves.
+  apply: Pchildren => // i.
+  apply: IH; last by apply: mem_child.
+  rewrite /lth /=.
+  rewrite subnS ltn_predL subn_gt0 /height.
+  rewrite ltn_neqAle; apply /andP; split; last by rewrite leq_bigmax_list.
+  apply /eqP => size_max; move: notleafp.
   by rewrite height_is_leaf.
-(* FIXME takes about 5 hours to compile *)
 Qed.
-*)
