@@ -23,7 +23,7 @@ Unset Printing Implicit Defensive.
 (*                                                                             *)
 (*                        *** STRING-BASED TYPES ***                           *)
 (*                                                                             *)
-(*   Let (r : nat) (j, k : [r]) (p, q, s : [r*]) (U : ptree) (T : Type).       *)
+(*   Let (r : nat) (j, k : [r]) (p, q, s : [r*]) (U : ptree r) (T : Type).     *)
 (*                                                                             *)
 (*                                 DATATYPES                                   *)
 (*              nat == the natural numbers                                     *)
@@ -42,6 +42,15 @@ Unset Printing Implicit Defensive.
 (*   - From [r] to nat                                                         *)
 (*   - From r.-tuple T to seq T                                                *)
 (*                                                                             *)
+(*                                ORDINALS                                     *)
+(*        wdord k i == the ordinal of type [r] with the same value as i (which *)
+(*                     has type [k]), for k : [r]                              *)
+(*         maxo j k == the maximum of j and k (of type [r])                    *)
+(*         mino j k == the minumum of j and k (of type [r])                    *)
+(*             So j == the successor of j (of type [r])                        *)
+(*        subon j n == the difference between j and n (of type [r]),           *)
+(*                     where n : nat                                           *)
+(*                                                                             *)
 (*                              SUFFIX-CLOSED                                  *)
 (*         parent p == the string p without the first element, or [::] if p is *)
 (*                     empty                                                   *)
@@ -57,12 +66,23 @@ Unset Printing Implicit Defensive.
 (*      ancestors p == every suffix of p                                       *)
 (* is_strict_ancestor p q == p is a suffix of q, but p is not q                *)
 (*     children U p == a list of all the children of p in U                    *)
+(*         height U == the maximum size of the elements of U                   *)
 (*  descendants U p == a list of all the children of p, and the children of the*)
 (*                     children, and so on, as long as they are in U           *)
 (*      is_leaf U p == there are no descendants of p in U                      *)
 (*         leaves U == a list of all the leaves of U                           *)
 (*      connected U == there is only one string in U without its parent in U   *)
+(* children_from_arity p n == the n.-tuple of predicted children of p (where   *)
+(*                            n : [r.+1])                                      *)
 (*                                                                             *)
+(*   Let now (r : nat) (p : [r.+1*]) (U : ptree r.+1).                         *)
+(*                                                                             *)
+(*        arity U p == the arity of p in U (of type [r.+2]), as long as U is   *)
+(*                     tree-like                                               *)
+(*    arity_nat U p == the nat version of arity U p                            *)
+(*                                                                             *)
+(* There is a bottom-up induction available for tree-like terms, ptree_buind.  *)
+
 
 
 
@@ -72,6 +92,78 @@ Notation "[ r ]" := 'I_r (at level 0, format "[ r ]").
 
 (*   There is an implicit coercion nat_of_ord : [r] -> nat that allows         *)
 (* functions on nat to seamleslly recieve inputs of type [r].                  *)
+
+Section Ordinals.
+
+Variable r : nat.
+
+(* We define some operations on ordinals *)
+Definition wdord (k : [r.+1]) : [k] -> [r] :=
+  @widen_ord k r (ltn_ord k).
+
+Lemma wdord_eq (k : [r.+1]) (i j : [k]) :
+  (wdord i == wdord j) = (i == j).
+Proof.
+  apply /idP /idP => [/eqP eqwdij | /eqP -> //].
+  have /= eqij : val (wdord i) = val (wdord j) by rewrite eqwdij.
+  by apply /eqP; apply: val_inj.
+Qed.
+
+Definition maxo (m n : [r]) : [r] :=
+  if m < n then n else m.
+
+Lemma maxn_maxo (m n : [r]) : maxn m n = maxo m n.
+Proof. by rewrite /maxo /maxn; case: ifP. Qed.
+
+Lemma maxo_idPr (m n : [r]) : reflect (maxo m n = n) (m <= n).
+Proof.
+  rewrite /maxo; case: ifP.
+    by move=> /ltnW ->; apply: (iffP idP).
+  move=> /negP /negP; rewrite -leqNgt => nlem.
+  apply: (iffP idP) => [mlen | -> //]; apply /eqP.
+  move: nlem mlen; case: ltngtP => // eqnm _ _.
+  by rewrite -val_eqE /=; apply /eqP.
+Qed.
+
+Lemma maxoC : commutative maxo.
+Proof.
+  move=> m n; rewrite /maxo; case: ifP; case: ifP; case: ltngtP => //.
+  by move=> eqnm _ _; apply /eqP; rewrite -val_eqE /=; apply /eqP.
+Qed.
+
+Lemma maxo_idPl (m n : [r]) : reflect (maxo m n = m) (n <= m).
+Proof.
+  by rewrite maxoC; apply: maxo_idPr.
+Qed.
+
+Definition mino (m n : [r]) : [r] :=
+  if m < n then m else n.
+
+Lemma minn_mino (m n : [r]) : minn m n = mino m n.
+Proof. by rewrite /mino /minn; case: ifP. Qed.
+
+Lemma ltoP (m n : [r]) :
+  ltn_xor_geq m n (mino n m) (mino m n)
+    (maxo n m) (maxo m n) (n <= m) (m < n).
+Proof.
+  by rewrite -2!minn_mino -2!maxn_maxo; apply: ltnP.
+Qed.
+
+Definition So (k : [r]) : [r.+1] := @Ordinal r.+1 k.+1 (ltn_ord k).
+
+Lemma S_So (k : [r]) : k.+1 = So k.
+Proof. by []. Qed.
+
+Definition subon (j : [r]) (n : nat) : [r].
+Proof.
+  refine (@Ordinal r (j - n) _).
+  by move: j => [j jltr]; rewrite (leq_ltn_trans _ jltr) ?leq_subr.
+Defined.
+
+Lemma subn_subon (j : [r]) (n : nat) : j - n = subon j n.
+Proof. by []. Qed.
+
+End Ordinals.
 
 
 (*   We use lists of elements of [r] to represent bounded strings, or [r*].    *)
@@ -136,76 +228,10 @@ Proof.
   by apply: suffix_closed_correct => //; rewrite in_cons eqxx.
 Qed.
 
-Definition wdord (k : [r.+1]) : [k] -> [r] :=
-  @widen_ord k r (ltn_ord k).
-
-Lemma wdord_eq (k : [r.+1]) (i j : [k]) :
-  (wdord i == wdord j) = (i == j).
-Proof.
-  apply /idP /idP => [/eqP eqwdij | /eqP -> //].
-  have /= eqij : val (wdord i) = val (wdord j) by rewrite eqwdij.
-  by apply /eqP; apply: val_inj.
-Qed.
-
-Definition maxo (m n : [r]) : [r] :=
-  if m < n then n else m.
-
-Lemma maxn_maxo (m n : [r]) : maxn m n = maxo m n.
-Proof. by rewrite /maxo /maxn; case: ifP. Qed.
-
-Lemma maxo_idPr (m n : [r]) : reflect (maxo m n = n) (m <= n).
-Proof.
-  rewrite /maxo; case: ifP.
-    by move=> /ltnW ->; apply: (iffP idP).
-  move=> /negP /negP; rewrite -leqNgt => nlem.
-  apply: (iffP idP) => [mlen | -> //]; apply /eqP.
-  move: nlem mlen; case: ltngtP => // eqnm _ _.
-  by rewrite -val_eqE /=; apply /eqP.
-Qed.
-
-Lemma maxoC : commutative maxo.
-Proof.
-  move=> m n; rewrite /maxo; case: ifP; case: ifP; case: ltngtP => //.
-  by move=> eqnm _ _; apply /eqP; rewrite -val_eqE /=; apply /eqP.
-Qed.
-
-Lemma maxo_idPl (m n : [r]) : reflect (maxo m n = m) (n <= m).
-Proof.
-  by rewrite maxoC; apply: maxo_idPr.
-Qed.
-
-Definition mino (m n : [r]) : [r] :=
-  if m < n then m else n.
-
-Lemma minn_mino (m n : [r]) : minn m n = mino m n.
-Proof. by rewrite /mino /minn; case: ifP. Qed.
-
-Lemma ltoP (m n : [r]) :
-  ltn_xor_geq m n (mino n m) (mino m n)
-    (maxo n m) (maxo m n) (n <= m) (m < n).
-Proof.
-  by rewrite -2!minn_mino -2!maxn_maxo; apply: ltnP.
-Qed.
-
-Definition So (k : [r]) : [r.+1] := @Ordinal r.+1 k.+1 (ltn_ord k).
-
-Lemma S_So (k : [r]) : k.+1 = So k.
-Proof. by []. Qed.
-
-Definition subon (j : [r]) (n : nat) : [r].
-Proof.
-  refine (@Ordinal r (j - n) _).
-  by move: j => [j jltr]; rewrite (leq_ltn_trans _ jltr) ?leq_subr.
-Defined.
-Notation "j -on k" := (subon j k) (at level 50, format "j  -on  k").
-
-Lemma subn_subon (j : [r]) (n : nat) : j - n = j -on n.
-Proof. by []. Qed.
-
 Definition well_numbered_single (U : ptree r) (s : [r*]) : bool :=
   match s with
   | [::] => true
-  | j :: p => (j -on 1) :: p \in U
+  | j :: p => (subon j 1) :: p \in U
   end.
 
 Definition well_numbered (U : ptree r) : bool :=
@@ -220,11 +246,11 @@ Proof.
   apply: (iffP idP).
     move=> /allP /=; rewrite /well_numbered_single => wnU p j jpinU k kleqj.
     set i := j - k.
-    have -> : k = j -on i by apply: val_inj; rewrite /i /= subKn.
+    have -> : k = subon j i by apply: val_inj; rewrite /i /= subKn.
     elim: i => [| n IH].
-      suff -> : j -on 0 = j => //.
+      suff -> : subon j 0 = j => //.
       by apply: val_inj; rewrite /= subn0.
-    have -> : j -on n.+1 = j -on n -on 1.
+    have -> : subon j n.+1 = subon (subon j n) 1.
       by apply: val_inj; rewrite /= subnS subn1.
     by apply: wnU _ IH.
   move=> H; apply /allP; case => // a l alinU.
@@ -367,58 +393,6 @@ Qed.
 Definition height (U : ptree r) : nat :=
   \max_(p <- U) size p.
 
-End Strings.
-
-Section Strings2.
-
-Variable r : nat.
-
-Definition arity (U : ptree r.+1) (p : [r.+1*]) : [r.+2] :=
-  if children U p is [::] then ord0 else
-    So (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
-
-Definition arity_nat (U : ptree r.+1) (p : [r.+1*]) : nat :=
-  if children U p is [::] then 0 else
-    (\max_(c <- children U p) head ord0 c).+1.
-
-Lemma bmaxn_bmaxo (n : nat) (s : seq [n.+1*]) (F : [n.+1*] -> [n.+1]) :
-  \max_(x <- s) F x = \big[@maxo n.+1/ord0]_(x <- s) F x.
-Proof.
-  elim: s => [| x s IH]; first by rewrite 2!big_nil.
-  by rewrite 2!big_cons IH maxn_maxo.
-Qed.
-
-Lemma arity_val (U : ptree r.+1) (p : [r.+1*]) :
-  arity_nat U p = arity U p.
-Proof.
-  rewrite /arity_nat /arity.
-  case: (children U p) => [// | c cs].
-  by rewrite -S_So -bmaxn_bmaxo.
-Qed.
-
-Lemma arity0 (s : [r.+1*]) :
-  arity [:: [::]] s = ord0.
-Proof.
-  by rewrite /arity /= /is_parent /= andbF.
-Qed.
-
-Definition children_from_arity (p : [r*]) (k : [r.+1]) : k.-tuple [r*] :=
-  [tuple (wdord i) :: p | i < k].
-
-Lemma children_from_arityP  (p : [r*]) (k : [r.+1]) (c : [r*]) :
-  reflect
-    (exists (i : [k]), c = wdord i :: p)
-    (c \in children_from_arity p k).
-Proof.
-  apply: (iffP idP).
-    by move=> /tnthP [i]; rewrite tnth_map tnth_ord_tuple => ->; exists i.
-  by move=> [i ->]; apply /tnthP; exists i; rewrite tnth_map tnth_ord_tuple.
-Qed.
-
-Lemma children_from_arity0 (p : [r*]) :
-  children_from_arity p ord0 = [tuple].
-Proof. by rewrite tuple0. Qed.
-
 Definition descendants (U : ptree r) (p : [r*]) : seq [r*] :=
   filter (is_ancestor p) U.
 
@@ -500,50 +474,77 @@ Lemma connected_correct (S : ptree r) (p : [r*]) :
   (p == [::]) || (p != [::]) && (parent p \notin S).
 Proof. by case: p. Qed.
 
-End Strings2.
+Definition children_from_arity (p : [r*]) (k : [r.+1]) : k.-tuple [r*] :=
+  [tuple (wdord i) :: p | i < k].
 
-Lemma arity_leaf (r : nat) (U : ptree r.+1) (l : [r.+1*]) :
+Lemma children_from_arityP  (p : [r*]) (k : [r.+1]) (c : [r*]) :
+  reflect
+    (exists (i : [k]), c = wdord i :: p)
+    (c \in children_from_arity p k).
+Proof.
+  apply: (iffP idP).
+    by move=> /tnthP [i]; rewrite tnth_map tnth_ord_tuple => ->; exists i.
+  by move=> [i ->]; apply /tnthP; exists i; rewrite tnth_map tnth_ord_tuple.
+Qed.
+
+Lemma children_from_arity0 (p : [r*]) :
+  children_from_arity p ord0 = [tuple].
+Proof. by rewrite tuple0. Qed.
+
+End Strings.
+
+Section Strings2.
+
+Variable r : nat.
+
+Lemma bmaxn_bmaxo (s : seq [r.+1*]) (F : [r.+1*] -> [r.+1]) :
+  \max_(x <- s) F x = \big[@maxo r.+1/ord0]_(x <- s) F x.
+Proof.
+  elim: s => [| x s IH]; first by rewrite 2!big_nil.
+  by rewrite 2!big_cons IH maxn_maxo.
+Qed.
+
+Definition arity (U : ptree r.+1) (p : [r.+1*]) : [r.+2] :=
+  if children U p is [::] then ord0 else
+    So (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c).
+
+Lemma arity0 (s : [r.+1*]) :
+  arity [:: [::]] s = ord0.
+Proof.
+  by rewrite /arity /= /is_parent /= andbF.
+Qed.
+
+Variable U : ptree r.+1.
+
+Definition arity_nat (p : [r.+1*]) : nat :=
+  if children U p is [::] then 0 else
+    (\max_(c <- children U p) head ord0 c).+1.
+
+Lemma arity_val (p : [r.+1*]) :
+  arity_nat p = arity U p.
+Proof.
+  rewrite /arity_nat /arity.
+  case: (children U p) => [// | c cs].
+  by rewrite -S_So -bmaxn_bmaxo.
+Qed.
+
+Lemma arity_leaf (l : [r.+1*]) :
   is_leaf U l -> arity U l = ord0.
 Proof.
   by rewrite children_is_leaf /arity => /eqP ->.
 Qed.
 
-(*
-Definition arity2 (r : nat) (U : ptree r.+1) (p : [r.+1*]) : nat :=
-  if children U p is [::] then 0 else
-    (\max_(c <- children U p) (head ord0 c)).+1.
-
-Lemma arity12 (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
-    tree_like U ->
-  arity U p = arity2 U p.
-Proof.
-  move=> /and3P [scU /well_numberedP wnU uniqU].
-  rewrite /arity /arity2.
-  set cs := children U p.
-  elim: cs => [// | j s IH /=].
-  congr S; rewrite IH big_cons.
-Admitted.
-
-Lemma arity_tree_like (r : nat) (U : ptree r) (p : [r*]) :
-    tree_like U ->
-  arity U p < r.
-Proof.
-Admitted.
-
-*)
-
-Definition children_indexes (r : nat) (U : ptree r.+1) (p : [r.+1*])
-    : seq [r.+1] :=
+Definition children_indexes (p : [r.+1*]) : seq [r.+1] :=
   map (head ord0) (children U p).
 
-Lemma children_map (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
-  children U p = [seq i :: p | i <- children_indexes U p].
+Lemma children_map (p : [r.+1*]) :
+  children U p = [seq i :: p | i <- children_indexes p].
 Proof.
   rewrite -map_comp.
   by symmetry; apply: map_id_in => /= c /childrenP [/is_parentP [i ->] _].
 Qed.
 
-Lemma max_in_children (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+Lemma max_in_children (p : [r.+1*]) :
    ~ is_leaf U p ->
  (\big[@maxo r.+1/ord0]_(c <- children U p) head ord0 c) :: p \in children U p.
 Proof.
@@ -564,7 +565,7 @@ Proof.
   by rewrite in_cons eqxx.
 Qed.
 
-Lemma children_arityP (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+Lemma children_arityP (p : [r.+1*]) :
     tree_like U ->
     p \in U ->
   perm_eq (children U p) (children_from_arity p (arity U p)).
@@ -600,7 +601,7 @@ Proof.
   by rewrite children_is_leaf ischildren.
 Qed.
 
-Lemma arity_size (r : nat) (U : ptree r.+1) (p : [r.+1*]) :
+Lemma arity_size (p : [r.+1*]) :
     tree_like U ->
     p \in U ->
   arity U p = size (children U p) :> nat.
@@ -610,7 +611,7 @@ Proof.
   by rewrite /children_from_arity size_map size_enum_ord.
 Qed.
 
-Lemma mem_child (r : nat) (U : ptree r.+1) (p : [r.+1*]) (i : [arity U p]) :
+Lemma mem_child (p : [r.+1*]) (i : [arity U p]) :
   tree_like U -> p \in U -> wdord i :: p \in U.
 Proof.
   move=> tlikeU pinU.
@@ -620,16 +621,16 @@ Proof.
   by exists i.
 Qed.
 
-Definition lth (r : nat) (U : ptree r.+1) (p q : [r.+1*]) : bool :=
+Definition lth (p q : [r.+1*]) : bool :=
   height U - size p < height U - size q.
 
-Lemma well_founded_lth (r : nat) (U : ptree r.+1) : well_founded (lth U).
+Lemma well_founded_lth : well_founded lth.
 Proof.
   apply: (@well_founded_lt_compat _ (fun p => height U - size p)).
   by move=> p q /ltP.
 Qed.
 
-Lemma child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
+Lemma ptree_buind (P : [r.+1*] -> Prop)
     (tlikeU : tree_like U)
     (Pleaves : forall l : [r.+1*], l \in U ->
       is_leaf U l -> P l
@@ -638,11 +639,9 @@ Lemma child_ind1 (r : nat) (U : ptree r.+1) (P : [r.+1*] -> Prop)
         (forall i : [arity U p], P (wdord i :: p)) ->
       P p
     )
-  (p : [r.+1*]) (pinU : p \in U) : P p.
+  : forall p : [r.+1*], p \in U -> P p.
 Proof.
-  move: p pinU.
-  apply: (well_founded_induction (well_founded_lth U)).
-  move=> p IH pinU.
+  apply: (well_founded_induction well_founded_lth) => p IH pinU.
   have [leafp | notleafp ] := boolP (is_leaf U p).
     by apply: Pleaves.
   apply: Pchildren => // i.
@@ -653,3 +652,5 @@ Proof.
   apply /eqP => size_max; move: notleafp.
   by rewrite height_is_leaf.
 Qed.
+
+End Strings2.
