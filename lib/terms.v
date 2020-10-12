@@ -266,79 +266,40 @@ Qed.
 Lemma positions_tree_like (t : tterm) : tree_like (positions t).
 Proof.
   apply /tree_likeP; split.
-  - apply /suffix_closedP; case; first by case: t.
-    elim/tterm_nind: t => //=.
-    move=> _ k f IH j p i; rewrite 2!in_cons /= => /allpairsPdep /=.
-    move=> [l [s [link s_in_posfl ijp_eq_rconssl]]].
-    apply /allpairsPdep => /=.
-    exists l; exists (behead s); split => //.
-      admit.
-    admit.
+  - apply /suffix_closedP.
+    elim/tterm_nind: t => [// | a k f IH].
+    case/lastP => [| p j i ipjinpos].
+      by rewrite positions_nil.
+    have ltjk : j < k.
+      by move: ipjinpos => /positions_last; rewrite last_rcons.
+    move: ipjinpos.
+    have -> : j = wdord (Ordinal ltjk) by apply /val_eqP.
+    rewrite -rcons_cons -2!positions_child.
+    by apply: IH.
   - apply /well_numberedP.
-    case: t => [// | a k f p [n ltnr] jpinpos]; case => [l lelr] /= leln.
-
-    apply /allpairsPdep => /=.
-    have ltlastk : (last (Ordinal lelr) p) < k.
-      admit.
-    exists (Ordinal ltlastk); exists (belast (Ordinal lelr) p); split.
-    + by apply: mem_ord_enum.
-    + rewrite (positions_child a).
-      (* here probably need an IH *)
-      admit.
-    + by rewrite lastI; congr rcons; apply /val_eqP.
-
-    (*
-    pose m := (n - l).
-    have eqlnm : l = n - m by rewrite subKn.
-    move: eqlnm lelr leln => ->; elim: m.
-      rewrite subn0 => ltnr' _.
-      by have -> : Ordinal ltnr' = Ordinal ltnr by apply /val_eqP.
-    move=> m IH; rewrite subnS => ltnm1r _.
-    have /= := jpinpos; rewrite 2!in_cons /=.
-    move=> /allpairsPdep /= [i [q [_ pinpos /eqP]]].
-    rewrite headI eqseq_cons => /andP [/eqP eqnhq /eqP eqpbq].
-    apply /allpairsPdep => /=.
-    have ltnm1k : (n - m).-1 < k.
-      admit.
-    exists (Ordinal ltnm1k); exists q; split; first by apply: mem_ord_enum.
-      admit.
-    apply /eqP; rewrite headI eqseq_cons; apply /andP; split.
-      apply /eqP /val_eqP => /=.
-    *)
-    (*
-    case: q => [| x q].
-      move=> /= nilinpos /eqP; rewrite eqseq_cons => /andP [/eqP eq1 /eqP eqpnil].
-      apply /allpairsPdep => /=.
-      have ltnm1k : (n - m).-1 < k by admit.
-      exists (Ordinal ltnm1k); exists [::]; split; first by apply: mem_ord_enum.
+    elim/tterm_nind: t => [// | a k f IH].
+    case/lastP => [j | q i j jqiinpos l lelj].
+       move=> /positions_tnode [// | [i [q [/eqP]]]].
+      rewrite lastI eqseq_rcons => /= /andP [/eqP <- /eqP ->] _ l leli.
+      rewrite in_cons /=; apply /allpairsPdep => /=.
+      have ltlk : l < k.
+        by rewrite (leq_ltn_trans leli) //; apply: (ltn_ord i).
+      exists (Ordinal ltlk); exists [::]; rewrite mem_ord_enum; split => //=.
         by apply: positions_nil.
-      by rewrite eqpnil /=; congr cons; apply /val_eqP.
-    *)
+      by congr cons; apply /val_eqP.
+    have ltik : i < k.
+      by move: jqiinpos; move=> /positions_last; rewrite last_rcons.
+    move: jqiinpos.
+    have -> : i = wdord (Ordinal ltik) by apply /val_eqP.
+    rewrite -2!rcons_cons -2!positions_child => jqinposi.
+    by apply: (IH _ _ j).
   - elim/tterm_nind: t => [// | a k ts IH /=].
     apply /andP; split.
       by apply /allpairsPdep => /= [[j [p [_ _]]]]; case p.
     apply: allpairs_uniq_dep; first exact: ord_enum_uniq.
       by move=> j _; apply: IH.
     by move=> [j1 p1] [j2 p2] _ _ /rcons_inj [p1e1p2 /ord_inj j1eqj2]; f_equal.
-
-(*
-  - apply /suffix_closedP; case => [// | j p i].
-    rewrite lastI build_ptreeE /= (lastI j p) build_ptreeE.
-    move: (validtrees (tnth _ (last j p)) (mem_tnth _ _)) => /and3P [].
-    by move=> /suffix_closedP sc _ _; apply: sc.
-  - apply /well_numberedP; case => [j | j p i].
-      move=> _ k kltj; rewrite /build_ptree.
-      rewrite lastI build_ptreeE /=.
-      move: (validtrees (tnth trees k) (mem_tnth _ _)) => /and3P [sc _ _].
-      apply: suffix_closed_nil => //.
-      by apply: (nonempty _ (mem_tnth _ _)).
-    rewrite lastI build_ptreeE /= => H k klti.
-    rewrite lastI build_ptreeE /=.
-    move: (validtrees (tnth _ (last j p)) (mem_tnth _ _)).
-    move=> /and3P [_ /well_numberedP wn _].
-    by apply: wn klti.
- *)
-Admitted.
+Qed.
 
 Definition tchildren (t : tterm) : seq tterm :=
   match t with
