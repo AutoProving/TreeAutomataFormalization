@@ -1,5 +1,5 @@
 Set Warnings "-notation-overridden, -notation-incompatible-format".
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_ssreflect finmap.
 Set Warnings "notation-overridden, notation-incompatible-format".
 
 Require Import Coq.Program.Wf.
@@ -685,33 +685,40 @@ Admitted.
 *)
 
 Variable t : tterm r.+1 Sigma.
+Variable dstate : state.
+Variable dSigma : Sigma.
 
-Record trun := TRun {
-  trho : [r.+1*] -> state;
-  _ : forall d, wfrun t d trho
+Record frun := FRun {
+  frho :> {fsfun [r.+1*] -> state with dstate};
+  _ : wfrun t dSigma frho
 }.
+Canonical frun_subType := [subType for frho].
+Definition frun_eqMixin := [eqMixin of frun by <:].
+Canonical frun_eqType := EqType frun frun_eqMixin.
+Definition frun_choiceMixin := [choiceMixin of frun by <:].
+Canonical frun_choiceType := ChoiceType frun frun_choiceMixin.
 
-Lemma trun_wfrun (rn : trun) (d : Sigma) : wfrun t d (trho rn).
+Lemma frun_wfrun (rn : frun) : wfrun t dSigma (frho rn).
 Proof. by case: rn. Qed.
 
-Definition trun_size (rn : trun) : nat :=
+Definition frun_size (rn : frun) : nat :=
   size (positions t).
 
-Definition reaches_state (rn : trun) (q : state) : bool :=
-  trho rn [::] == q.
+Definition reaches_state (rn : frun) (q : state) : bool :=
+  rn [::] == q.
 
-Definition is_accepting (rn : trun) : bool :=
+Definition is_accepting (rn : frun) : bool :=
   has (reaches_state rn) (final A).
 
-Definition reaches_transition (rn : trun) (k : [r.+2])
+Definition reaches_transition (rn : frun) (k : [r.+2])
     (tr : k.-tuple state * Sigma * state) : bool :=
   (k == arity (positions t) [::] :> nat)
     &&
     (tr == (
-      [tuple trho rn [:: wdord i] | i < k],
+      [tuple frho rn [:: wdord i] | i < k],
       (* the above line should be the same as using children_from_arity *)
       head_sig t,
-      trho rn [::]
+      rn [::]
     )).
 
 End Runs.
@@ -722,41 +729,46 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 Variable A : tbuta r.+1 Sigma state.
+Variable dstate : state.
+Variable dSigma : Sigma.
 
 Lemma reaches_state_eventually (t : tterm r.+1 Sigma) (q : state) :
   reflect
-    (exists (rn : trun A t), reaches_state rn q)
+    (exists (rn : frun A t dstate dSigma), reaches_state rn q)
     (reach_eventually A q t).
 Proof.
   apply: (iffP idP).
     move: q; elim/tterm_nind: t.
       move=> a q /reach_eventuallyP aqintrans.
       rewrite /reaches_state.
-      pose rho := fun p : [r.+1*] => q.
-      suff wfrho : forall d : Sigma, wfrun A (tleaf r.+1 a) d rho.
-        by exists (TRun wfrho).
+      (*pose rho := [fsfun p => q].
+      suff wfrho : wfrun A (tleaf r.+1 a) dSigma rho.
+        by exists (FRun wfrho).
       move=> d; apply /wfrunP => /= p.
       by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite sig_at_head.
+       *)
+      admit.
     move=> a k f IH q /reach_eventuallyP /= [tr [trintrans tra trq trqs]].
-    (* FIXME needs that trun is a choice type *)
+    (* FIXME needs that frun is a choice type *)
     Fail pose rho := fun p : [r.+1*] =>
       if p is j' :: s then
         match Sumbool.sumbool_of_bool (j' < k) with
         | left ltj'k =>
             let j := Ordinal ltj'k in
             let rhoj := xchoose (IH j (tnth tr.1.1 j) (trqs j)) in
-            trho rhoj s
+            frho rhoj s
         | right _ => a
         end
       else
         a.
+
   (*
   move: rn q qinfinal reachesrnq.
   elim/tterm_nind: t => [a rn q qinfinal /eqP reaches | a k f IH rn].
-    have /wfrunP /= /(_ [::]) /(_ isT) := trun_wfrun rn a.
+    have /wfrunP /= /(_ [::]) /(_ isT) := frun_wfrun rn a.
     by rewrite arity0 tuple0 reaches sig_at_head.
   move=> q qinfinal /eqP rnnilq; apply /reach_eventuallyP => /=.
-  have /wfrunP /(_ [::]) /(_ (positions_nil _)) := trun_wfrun rn a.
+  have /wfrunP /(_ [::]) /(_ (positions_nil _)) := frun_wfrun rn a.
   rewrite rnnilq arity_positions sig_at_head /=.
   set tr := (_, _, _).
   move=> trintrans; exists tr; split=> // j /=.
@@ -768,7 +780,7 @@ Admitted.
 
 Lemma accepts_is_accepting (t : tterm r.+1 Sigma) :
   reflect
-    (exists (rn : trun A t), is_accepting rn)
+    (exists (rn : frun A t dstate dSigma), is_accepting rn)
     (accepts A t).
 Proof.
   apply: (iffP idP).
@@ -821,13 +833,15 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 Variable A : tbuta r.+1 Sigma state.
+Variable dstate : state.
+Variable dSigma : Sigma.
 
-Definition extends (t t' : tterm r.+1 Sigma) (rn : trun A t) (rn' : trun A t')
-    (d : Sigma) : Prop :=
+Definition extends (t t' : tterm r.+1 Sigma) (rn : frun A t dstate dSigma)
+    (rn' : frun A t' dstate dSigma) : Prop :=
   exists p : [r.+1*], forall u : [r.+1*],
       u \in positions t ->
-    (sig_at d t u = sig_at d t' (u ++ p))
-    /\ (trho rn u = trho rn' (u ++ p)).
+    (sig_at dSigma t u = sig_at dSigma t' (u ++ p))
+    /\ (frho rn u = frho rn' (u ++ p)).
 
 End Runs2.
 
