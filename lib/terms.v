@@ -732,6 +732,19 @@ Variable A : tbuta r.+1 Sigma state.
 Variable dstate : state.
 Variable dSigma : Sigma.
 
+Local Open Scope fset.
+
+Definition fpos (t : tterm r.+1 Sigma) : {fset [r.+1*]} :=
+  [fset p | p in positions t].
+
+Lemma in_fpos (t : tterm r.+1 Sigma) (p : [r.+1*]) :
+  (p \in fpos t) = (p \in positions t).
+Proof. by rewrite in_fsetE. Qed.
+
+Lemma fpos_nil (t : tterm r.+1 Sigma) :
+  [::] \in fpos t.
+Proof. by rewrite in_fpos positions_nil. Qed.
+
 Lemma reaches_state_eventually (t : tterm r.+1 Sigma) (q : state) :
   reflect
     (exists (rn : frun A t dstate dSigma), reaches_state rn q)
@@ -741,27 +754,43 @@ Proof.
     move: q; elim/tterm_nind: t.
       move=> a q /reach_eventuallyP aqintrans.
       rewrite /reaches_state.
-      (*pose rho := [fsfun p => q].
+      pose rho := [fsfun p : fpos (tleaf r.+1 a) => q | dstate].
+      have rho0 : rho [::] = q by rewrite fsfun_fun fpos_nil.
       suff wfrho : wfrun A (tleaf r.+1 a) dSigma rho.
-        by exists (FRun wfrho).
-      move=> d; apply /wfrunP => /= p.
-      by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite sig_at_head.
-       *)
-      admit.
+        by exists (FRun wfrho); rewrite rho0.
+      apply /wfrunP => /= p.
+      by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite sig_at_head rho0.
     move=> a k f IH q /reach_eventuallyP /= [tr [trintrans tra trq trqs]].
-    (* FIXME needs that frun is a choice type *)
-    Fail pose rho := fun p : [r.+1*] =>
+    pose rho := [fsfun p in fpos (tnode a f) =>
       if p is j' :: s then
-        match Sumbool.sumbool_of_bool (j' < k) with
-        | left ltj'k =>
-            let j := Ordinal ltj'k in
+        match Sumbool.sumbool_of_bool (last j' s < k) with
+        | left ltlastj'sk =>
+            let j := Ordinal ltlastj'sk in
             let rhoj := xchoose (IH j (tnth tr.1.1 j) (trqs j)) in
-            frho rhoj s
-        | right _ => a
+            rhoj (belast j' s)
+        | right _ => dstate
         end
-      else
-        a.
-
+      else q
+    | dstate].
+    suff wfrho : wfrun A (tnode a f) dSigma rho.
+      by exists (FRun wfrho); rewrite /reaches_state fsfun_fun fpos_nil.
+    apply /wfrunP => p pinpos.
+    have /positions_tnode [-> | [j [s [eqpsj sinpos]]]] := pinpos.
+      rewrite arity_positions sig_at_head fsfun_fun fpos_nil /=.
+      admit.
+    rewrite fsfun_fun in_fpos pinpos eqpsj.
+    rewrite [X in (_, _, match X with [::] => _ | _ :: _ => _ end)]headI.
+    have -> : forall s,
+        last (head (wdord j) s) (behead (rcons s (wdord j))) = wdord j.
+      by case=> [// | hd tl /=]; rewrite last_rcons.
+    have -> : forall s,
+        belast (head (wdord j) s) (behead (rcons s (wdord j))) = s.
+      by case=> [// | hd tl /=]; rewrite belast_rcons.
+    have ltjk : wdord j < k by rewrite /=; apply: ltn_ord.
+    case: (Sumbool.sumbool_of_bool _) => [ltjk' | //] {ltjk}.
+    set IHj := IH _ _ _.
+    have := xchooseP IHj.
+    rewrite /reaches_state.
   (*
   move: rn q qinfinal reachesrnq.
   elim/tterm_nind: t => [a rn q qinfinal /eqP reaches | a k f IH rn].
