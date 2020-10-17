@@ -81,6 +81,25 @@ Unset Printing Implicit Defensive.
 (*                     automaton corresponding to A without the transitions    *)
 (*                     with greater than n arity                               *)
 (*                                                                             *)
+(*                                     RUNS                                    *)
+(*   Let (A : tbuta r.+1 Sigma state) (t t' : tterm r.+1 Sigma) (d : Sigma)    *)
+(* (rho : [[r.+1*]] -> state) (rn : trun A t) (rn' : trun A t').                 *)
+(*                                                                             *)
+(*  wfrun A t d rho == for each position p of t, if cs are the children of p,  *)
+(*                     then (map rho cs, sig_at d t p, rho p) is a transition  *)
+(*                     of A                                                    *)
+(*         trun A t == a function trho such that (t, trho) is                  *)
+(*                     (wfrun A t d rho) for every d                           *)
+(*     trun_size rn == the number of positions of the term of the run          *)
+(*      reaches_state rn q == the state reached at the root is q               *)
+(*  is_accepting rn == the run rn reaches some accepting state                 *)
+(* reaches_transition rn k tr == the run rn reaches the k-transition k         *)
+(*  unambiguous A d == for each term t there is at most one rho such that      *)
+(*                     (wfrun A t d rho) holds                                 *)
+(* extends A t t' rn rn' d == there is a string p that can be appended to each *)
+(*                     position of t to obtain the behaviour of rn'            *)
+(*                                                                             *)
+(*                                INTERSECTION                                 *)
 (*   Let (st1 st2 : finType)  (r1 r2 : nat)                                    *)
 (* (trsik : seq (k.-tuple sti * Sig * sti))                                    *)
 (* (trsi : {ffun forall k : [[r.+1]], seq (k.-tuple sti * Sig * sti)})           *)
@@ -97,24 +116,6 @@ Unset Printing Implicit Defensive.
 (*                     functions of A1 and A2                                  *)
 (*    intersection A1' A2' == the intersection1 of the restrictions of A1' and *)
 (*                     A2' to the minumum between r1 and r2                    *)
-(*                                                                             *)
-(*   Let (A : tbuta r.+1 Sigma state) (t t' : tterm r.+1 Sigma) (d : Sigma)    *)
-(* (rho : [[r.+1*]] -> state) (rn : trun A t) (rn' : trun A t').                 *)
-(*                                                                             *)
-(*                                     RUNS                                    *)
-(*  wfrun A t d rho == for each position p of t, if cs are the children of p,  *)
-(*                     then (map rho cs, sig_at d t p, rho p) is a transition  *)
-(*                     of A                                                    *)
-(*         trun A t == a function trho such that (t, trho) is                  *)
-(*                     (wfrun A t d rho) for every d                           *)
-(*     trun_size rn == the number of positions of the term of the run          *)
-(*      reaches_state rn q == the state reached at the root is q               *)
-(*  is_accepting rn == the run rn reaches some accepting state                 *)
-(* reaches_transition rn k tr == the run rn reaches the k-transition k         *)
-(*  unambiguous A d == for each term t there is at most one rho such that      *)
-(*                     (wfrun A t d rho) holds                                 *)
-(* extends A t t' rn rn' d == there is a string p that can be appended to each *)
-(*                     position of t to obtain the behaviour of rn'            *)
 
 
 Section Tterms.
@@ -237,6 +238,10 @@ Definition sig_at (d : Sigma) (t : tterm) (p : [r*]) : Sigma :=
     (positions_sig t)
     (find (fun pa => pa.1 == p) (positions_sig t))
   ).2.
+
+Lemma sig_at_head (d : Sigma) (t : tterm) :
+  sig_at d t [::] = head_sig t.
+Proof. by case: t. Qed.
 
 Lemma positions_positions_sig (t : tterm) :
   positions t = [seq pa.1 | pa <- positions_sig t].
@@ -508,6 +513,28 @@ Fixpoint reach_eventually (A : tbuta) (q : state) (t : tterm r Sigma) : bool :=
     ]
   end.
 
+Lemma reach_eventuallyP (A : tbuta) (q : state) (t : tterm r Sigma) :
+  reflect
+    (match t with
+     | tleaf a => ([tuple], a, q) \in transitions A ord0
+     | tnode a k f =>
+       exists tr,
+         [/\ tr \in transitions A k,
+             tr.1.2 = a,
+             tr.2 = q &
+             forall j : [k], reach_eventually A (tnth tr.1.1 j) (f j)
+         ]
+     end
+    )
+    (reach_eventually A q t).
+Proof.
+  case: t => /=  [a | a k f].
+    by apply: (iffP idP).
+  apply: (iffP 'exists_and4P) => /=.
+    by move=> [tr [? /eqP ? /eqP ? /forallP ?]]; exists tr; split.
+  by move=> [tr [? /eqP ? /eqP ? /forallP ?]]; exists tr; split.
+Qed.
+
 Lemma reach_at_depth_eventually (A : tbuta) (q : state) (t : tterm r Sigma) :
   reflect (exists i : nat, reach_at_depth A q t i) (reach_eventually A q t).
 Proof.
@@ -532,6 +559,12 @@ Qed.
 
 Definition accepts (A : tbuta) (t : tterm r Sigma) : bool :=
   [exists q in final A, reach_eventually A q t].
+
+Lemma acceptsP (A : tbuta) (t : tterm r Sigma) :
+  reflect
+    (exists q, q \in final A /\ reach_eventually A q t)
+    (accepts A t).
+Proof. by apply: (iffP 'exists_andP). Qed.
 
 Definition transitions_preim (A : tbuta) (q : state) :
     {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)} :=
@@ -594,6 +627,209 @@ Proof.
 Qed.
 
 End Automata.
+
+
+Section Runs.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+Variable A : tbuta r.+1 Sigma state.
+
+Definition wfrun (t : tterm r.+1 Sigma) (d : Sigma)
+    (rho : [r.+1*] -> state) : bool :=
+  all
+    (fun p : [r.+1*] =>
+      (
+        [tuple of map rho (children_from_arity p (arity (positions t) p))],
+        sig_at d t p,
+        rho p
+      ) \in transitions A (arity (positions t) p)
+    )
+    (positions t).
+
+Lemma wfrun_default (t : tterm r.+1 Sigma) (d d' : Sigma)
+    (rho : [r.+1*] -> state) :
+  wfrun t d rho = wfrun t d' rho.
+Proof.
+  rewrite /wfrun.
+  apply: eq_in_all => p pinpos.
+  by rewrite (sig_at_default d d' pinpos).
+Qed.
+
+Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
+  reflect
+    {in positions t, forall p,
+      (
+        [tuple of map rho (children_from_arity p (arity (positions t) p))],
+        sig_at d t p,
+        rho p
+      ) \in transitions A (arity (positions t) p)
+    }
+    (wfrun t d rho).
+Proof.
+  by apply: (iffP allP).
+Qed.
+
+(*
+Definition partial_run (rho : [r.+1*] -> state) (j : [r.+1])
+    : [r.+1*] -> state :=
+  fun p => rho (j :: p).
+
+Lemma partial_wfrun (rho : [r.+1*] -> state) (a : Sigma) (k : [r.+2])
+  (f : (tterm r.+1 Sigma)^k) (d : Sigma) :
+    wfrun (tnode a f) d rho ->
+  forall (j : [k]), wfrun (f j) d (partial_run rho (wdord j)).
+Proof.
+Admitted.
+*)
+
+Variable t : tterm r.+1 Sigma.
+
+Record trun := TRun {
+  trho : [r.+1*] -> state;
+  _ : forall d, wfrun t d trho
+}.
+
+Lemma trun_wfrun (rn : trun) (d : Sigma) : wfrun t d (trho rn).
+Proof. by case: rn. Qed.
+
+Definition trun_size (rn : trun) : nat :=
+  size (positions t).
+
+Definition reaches_state (rn : trun) (q : state) : bool :=
+  trho rn [::] == q.
+
+Definition is_accepting (rn : trun) : bool :=
+  has (reaches_state rn) (final A).
+
+Definition reaches_transition (rn : trun) (k : [r.+2])
+    (tr : k.-tuple state * Sigma * state) : bool :=
+  (k == arity (positions t) [::] :> nat)
+    &&
+    (tr == (
+      [tuple trho rn [:: wdord i] | i < k],
+      (* the above line should be the same as using children_from_arity *)
+      head_sig t,
+      trho rn [::]
+    )).
+
+End Runs.
+
+Section Acceptance.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+Variable A : tbuta r.+1 Sigma state.
+
+Lemma reaches_state_eventually (t : tterm r.+1 Sigma) (q : state) :
+  reflect
+    (exists (rn : trun A t), reaches_state rn q)
+    (reach_eventually A q t).
+Proof.
+  apply: (iffP idP).
+    move: q; elim/tterm_nind: t.
+      move=> a q /reach_eventuallyP aqintrans.
+      rewrite /reaches_state.
+      pose rho := fun p : [r.+1*] => q.
+      suff wfrho : forall d : Sigma, wfrun A (tleaf r.+1 a) d rho.
+        by exists (TRun wfrho).
+      move=> d; apply /wfrunP => /= p.
+      by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite sig_at_head.
+    move=> a k f IH q /reach_eventuallyP /= [tr [trintrans tra trq trqs]].
+    (* FIXME needs that trun is a choice type *)
+    Fail pose rho := fun p : [r.+1*] =>
+      if p is j' :: s then
+        match Sumbool.sumbool_of_bool (j' < k) with
+        | left ltj'k =>
+            let j := Ordinal ltj'k in
+            let rhoj := xchoose (IH j (tnth tr.1.1 j) (trqs j)) in
+            trho rhoj s
+        | right _ => a
+        end
+      else
+        a.
+  (*
+  move: rn q qinfinal reachesrnq.
+  elim/tterm_nind: t => [a rn q qinfinal /eqP reaches | a k f IH rn].
+    have /wfrunP /= /(_ [::]) /(_ isT) := trun_wfrun rn a.
+    by rewrite arity0 tuple0 reaches sig_at_head.
+  move=> q qinfinal /eqP rnnilq; apply /reach_eventuallyP => /=.
+  have /wfrunP /(_ [::]) /(_ (positions_nil _)) := trun_wfrun rn a.
+  rewrite rnnilq arity_positions sig_at_head /=.
+  set tr := (_, _, _).
+  move=> trintrans; exists tr; split=> // j /=.
+  rewrite tnth_map tnth_children_from_arity.
+  apply: IH.
+  admit.
+*)
+Admitted.
+
+Lemma accepts_is_accepting (t : tterm r.+1 Sigma) :
+  reflect
+    (exists (rn : trun A t), is_accepting rn)
+    (accepts A t).
+Proof.
+  apply: (iffP idP).
+    move=> /acceptsP [q [qinfinal /reaches_state_eventually [rn reachesrn]]].
+    by exists rn; apply /hasP; exists q.
+  move=> [rn /hasP [q qinfinal reachesrnq]].
+  apply /acceptsP; exists q; split=> //.
+  by apply /reaches_state_eventually; exists rn.
+Qed.
+
+End Acceptance.
+
+Section Unambiguous.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+
+Definition unambiguous (A : tbuta r.+1 Sigma state) (d : Sigma) : Prop :=
+  forall (t : tterm r.+1 Sigma) (rho1 rho2 : [r.+1*] -> state),
+    wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
+
+Lemma unambiguous_deterministic (A : buta r.+1 Sigma state) (d : Sigma) :
+  deterministic A -> unambiguous A d.
+Proof.
+  move=> /deterministicP deterA.
+  move=> t rho1 rho2 wf1 wf2 /=.
+  have {wf1 wf2} : wfrun A t d rho1 /\ wfrun A t d rho2 by split.
+  move: t; apply: child_ind => /=.
+    move=> t [wf1 wf2] l linpos lleaf.
+    apply: deterA.
+      by move: wf1 => /wfrunP /(_ l) /(_ linpos); apply.
+    have := wf2 => /wfrunP /(_ l) /(_ linpos).
+    by rewrite arity_leaf // children_from_arity0 (report_bug _ rho1); apply.
+  move=> t [wf1 wf2] p pinpos IH; apply: deterA.
+    by move: wf1 => /wfrunP /(_ p) /(_ pinpos); apply.
+  have := wf2 => /wfrunP /(_ p) /(_ pinpos).
+  set tup1 := [tuple of [seq rho1 _ | _ <- _]].
+  set tup2 := [tuple of [seq rho2 _ | _ <- _]].
+  suff -> : tup1 = tup2 by apply.
+  rewrite -eq_in_map_tuple => /= s sinchildren.
+  by apply: IH.
+Qed.
+
+End Unambiguous.
+
+Section Runs2.
+
+Variable r : nat.
+Variable Sigma : finType.
+Variable state : finType.
+Variable A : tbuta r.+1 Sigma state.
+
+Definition extends (t t' : tterm r.+1 Sigma) (rn : trun A t) (rn' : trun A t')
+    (d : Sigma) : Prop :=
+  exists p : [r.+1*], forall u : [r.+1*],
+      u \in positions t ->
+    (sig_at d t u = sig_at d t' (u ++ p))
+    /\ (trho rn u = trho rn' (u ++ p)).
+
+End Runs2.
 
 Section Intersection1.
 
@@ -686,137 +922,3 @@ Proof.
 Qed.
 
 End Intersection.
-
-Section Runs.
-
-Variable r : nat.
-Variable Sigma : finType.
-Variable state : finType.
-Variable A : tbuta r.+1 Sigma state.
-
-Definition wfrun (t : tterm r.+1 Sigma) (d : Sigma)
-    (rho : [r.+1*] -> state) : bool :=
-  all
-    (fun p : [r.+1*] =>
-      (
-        [tuple of map rho (children_from_arity p (arity (positions t) p))],
-        sig_at d t p,
-        rho p
-      ) \in transitions A (arity (positions t) p)
-    )
-    (positions t).
-
-Lemma wfrun_default (t : tterm r.+1 Sigma) (d d' : Sigma)
-    (rho : [r.+1*] -> state) :
-  wfrun t d rho = wfrun t d' rho.
-Proof.
-  rewrite /wfrun.
-  apply: eq_in_all => p pinpos.
-  by rewrite (sig_at_default d d' pinpos).
-Qed.
-
-Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
-  reflect
-    {in positions t, forall p,
-      (
-        [tuple of map rho (children_from_arity p (arity (positions t) p))],
-        sig_at d t p,
-        rho p
-      ) \in transitions A (arity (positions t) p)
-    }
-    (wfrun t d rho).
-Proof.
-  by apply: (iffP allP).
-Qed.
-
-(*
-Definition partial_run (rho : [r.+1*] -> state) (j : [r.+1])
-    : [r.+1*] -> state :=
-  fun p => rho (j :: p).
-
-Lemma partial_wfrun (rho : [r.+1*] -> state) (a : Sigma) (k : [r.+2])
-  (f : (tterm r.+1 Sigma)^k) (d : Sigma) :
-    wfrun (tnode a f) d rho ->
-  forall (j : [k]), wfrun (f j) d (partial_run rho (wdord j)).
-Proof.
-Admitted.
-*)
-
-Variable t : tterm r.+1 Sigma.
-
-Record trun := {
-  trho : [r.+1*] -> state;
-  _ : forall d, wfrun t d trho
-}.
-
-Definition trun_size (rn : trun) : nat :=
-  size (positions t).
-
-Definition reaches_state (rn : trun) (q : state) : bool :=
-  trho rn [::] == q.
-
-Definition is_accepting (rn : trun) : bool :=
-  has (reaches_state rn) (final A).
-
-Definition reaches_transition (rn : trun) (k : [r.+2])
-    (tr : k.-tuple state * Sigma * state) : bool :=
-  (k == arity (positions t) [::] :> nat)
-    &&
-    (tr == (
-      [tuple trho rn [:: wdord i] | i < k],
-      (* the above line should be the same as using children_from_arity *)
-      head_sig t,
-      trho rn [::]
-    )).
-
-End Runs.
-
-Section Unambiguous.
-
-Variable r : nat.
-Variable Sigma : finType.
-Variable state : finType.
-
-Definition unambiguous (A : tbuta r.+1 Sigma state) (d : Sigma) : Prop :=
-  forall (t : tterm r.+1 Sigma) (rho1 rho2 : [r.+1*] -> state),
-    wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
-
-Lemma unambiguous_deterministic (A : buta r.+1 Sigma state) (d : Sigma) :
-  deterministic A -> unambiguous A d.
-Proof.
-  move=> /deterministicP deterA.
-  move=> t rho1 rho2 wf1 wf2 /=.
-  have {wf1 wf2} : wfrun A t d rho1 /\ wfrun A t d rho2 by split.
-  move: t; apply: child_ind => /=.
-    move=> t [wf1 wf2] l linpos lleaf.
-    apply: deterA.
-      by move: wf1 => /wfrunP /(_ l) /(_ linpos); apply.
-    have := wf2 => /wfrunP /(_ l) /(_ linpos).
-    by rewrite arity_leaf // children_from_arity0 (report_bug _ rho1); apply.
-  move=> t [wf1 wf2] p pinpos IH; apply: deterA.
-    by move: wf1 => /wfrunP /(_ p) /(_ pinpos); apply.
-  have := wf2 => /wfrunP /(_ p) /(_ pinpos).
-  set tup1 := [tuple of [seq rho1 _ | _ <- _]].
-  set tup2 := [tuple of [seq rho2 _ | _ <- _]].
-  suff -> : tup1 = tup2 by apply.
-  rewrite -eq_in_map_tuple => /= s sinchildren.
-  by apply: IH.
-Qed.
-
-End Unambiguous.
-
-Section Runs2.
-
-Variable r : nat.
-Variable Sigma : finType.
-Variable state : finType.
-Variable A : tbuta r.+1 Sigma state.
-
-Definition extends (t t' : tterm r.+1 Sigma) (rn : trun A t) (rn' : trun A t')
-    (d : Sigma) : Prop :=
-  exists p : [r.+1*], forall u : [r.+1*],
-      u \in positions t ->
-    (sig_at d t u = sig_at d t' (u ++ p))
-    /\ (trho rn u = trho rn' (u ++ p)).
-
-End Runs2.

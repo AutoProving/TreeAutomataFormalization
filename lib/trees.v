@@ -491,6 +491,10 @@ Lemma children_from_arity0 (p : [r*]) :
   children_from_arity p ord0 = [tuple].
 Proof. by rewrite tuple0. Qed.
 
+Lemma tnth_children_from_arity (p : [r*]) (k : [r.+1]) (j : [k]) :
+  tnth (children_from_arity p k) j = wdord j :: p.
+Proof. by rewrite tnth_map tnth_ord_tuple. Qed.
+
 End Strings.
 
 Section Strings2.
