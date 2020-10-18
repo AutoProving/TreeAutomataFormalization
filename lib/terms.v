@@ -47,8 +47,7 @@ Unset Printing Implicit Defensive.
 (*       head_sig t == the label of the root of t                              *)
 (*           tpos t == the ttree obtained from t by forgeting the labels       *)
 (*      positions t == the ptree corresponding to t                            *)
-(*  positions_sig t == the labeled ptree corresponding to t                    *)
-(*     sig_at d t p == the label found at position p of t, or d if p is not a  *)
+(*    fsig_at d t p == the label found at position p of t, or d if p is not a  *)
 (*                     position of t                                           *)
 (*        child_ind == an induction principle for terms starting from the      *)
 (*                     leaves and using positions                              *)
@@ -86,7 +85,7 @@ Unset Printing Implicit Defensive.
 (* (rho : [[r.+1*]] -> state) (rn : trun A t) (rn' : trun A t').                 *)
 (*                                                                             *)
 (*  wfrun A t d rho == for each position p of t, if cs are the children of p,  *)
-(*                     then (map rho cs, sig_at d t p, rho p) is a transition  *)
+(*                     then (map rho cs, fsig_at d t p, rho p) is a transition *)
 (*                     of A                                                    *)
 (*         trun A t == a function trho such that (t, trho) is                  *)
 (*                     (wfrun A t d rho) for every d                           *)
@@ -223,50 +222,36 @@ Fixpoint positions (t : tterm) : ptree r :=
       ]
   end.
 
-Fixpoint positions_sig (t : tterm) : seq ([r*] * Sigma) :=
-  match t with
-  | tleaf a => [:: ([::], a)]
-  | tnode a k ts =>
-      ([::], a) :: [seq (rcons pa.1 (wdord j), pa.2) |
-        j <- ord_enum k,
-        pa <- positions_sig (ts j)
-      ]
-  end.
+Fixpoint fsig_at (dSigma : Sigma) (t : tterm) (p : [r*]) : Sigma :=
+   match t, p with
+   | tleaf a, [::] => a
+   | tleaf a, _ :: _ => dSigma
+   | tnode a k f, [::] => a
+   | tnode a k f, j :: p =>
+       match Sumbool.sumbool_of_bool (last j p < k) with
+        | left ltjk => fsig_at dSigma (f (Ordinal ltjk)) (belast j p)
+        | right _ => dSigma
+        end
+   end.
 
-Definition sig_at (d : Sigma) (t : tterm) (p : [r*]) : Sigma :=
-  (nth ([::], d)
-    (positions_sig t)
-    (find (fun pa => pa.1 == p) (positions_sig t))
-  ).2.
+Lemma fsig_at_path (dSigma a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*])
+    (j : [k]) :
+  fsig_at dSigma (tnode a f) (rcons p (wdord j)) = fsig_at dSigma (f j) p.
+Proof.
+  rewrite headI /= last_headI belast_headI.
+  case: (Sumbool.sumbool_of_bool _) => [ltjk |]; last by rewrite /= ltn_ord.
+  suff -> : Ordinal ltjk = j by [].
+  by apply /val_eqP.
+Qed.
 
-Lemma sig_at_head (d : Sigma) (t : tterm) :
-  sig_at d t [::] = head_sig t.
+Lemma fsig_at_head (d : Sigma) (t : tterm) :
+  fsig_at d t [::] = head_sig t.
 Proof. by case: t. Qed.
 
-Lemma positions_positions_sig (t : tterm) :
-  positions t = [seq pa.1 | pa <- positions_sig t].
+Lemma fsig_at_default (d d' : Sigma) (t : tterm) :
+  {in positions t, fsig_at d t =1 fsig_at d' t}.
 Proof.
-  elim/tterm_nind: t => [// | a k f IH /=]; congr cons.
-  rewrite map_allpairs /=.
-  congr flatten; apply: eq_map => j.
-  by rewrite IH -map_comp; apply: eq_map => [[]].
-Qed.
-
-Lemma sig_at_default (d d' : Sigma) (t : tterm) :
-  {in positions t, sig_at d t =1 sig_at d' t}.
-Proof.
-  rewrite /sig_at /=.
-  move=> p /nthP /= H; have := H [::] => {H} [[i iltsize] ithisp].
-  set f := fun pa => _.
-  congr snd.
-  apply: set_nth_default; rewrite -has_find.
-  move: iltsize ithisp; rewrite positions_positions_sig => iltsize.
-  erewrite nth_map; last by move: iltsize; rewrite size_map.
-  move=> nthpossig; apply /hasP => /=.
-  exists (nth ([::], d) (positions_sig t) i).
-    by apply: mem_nth; move: iltsize; rewrite size_map.
-  by rewrite /f; apply /eqP; apply: nthpossig.
-Qed.
+Admitted.
 
 Lemma positions_nil (t : tterm) :
   [::] \in positions t.
@@ -349,12 +334,6 @@ Definition tchildren (t : tterm) : seq tterm :=
 
 (* Lemma tchildren_children *)
 *)
-
-Lemma sig_at_path (dSigma a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*])
-    (j : [k]) :
-  sig_at dSigma (tnode a f) (rcons p (wdord j)) = sig_at dSigma (f j) p.
-Proof.
-Admitted.
 
 End Tterms.
 
@@ -665,7 +644,7 @@ Definition wfrun (t : tterm r.+1 Sigma) (d : Sigma)
     (fun p : [r.+1*] =>
       (
         [tuple of map rho (children_from_arity p (arity (positions t) p))],
-        sig_at d t p,
+        fsig_at d t p,
         rho p
       ) \in transitions A (arity (positions t) p)
     )
@@ -677,7 +656,7 @@ Lemma wfrun_default (t : tterm r.+1 Sigma) (d d' : Sigma)
 Proof.
   rewrite /wfrun.
   apply: eq_in_all => p pinpos.
-  by rewrite (sig_at_default d d' pinpos).
+  by rewrite (fsig_at_default d d' pinpos).
 Qed.
 
 Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
@@ -685,7 +664,7 @@ Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
     {in positions t, forall p,
       (
         [tuple of map rho (children_from_arity p (arity (positions t) p))],
-        sig_at d t p,
+        fsig_at d t p,
         rho p
       ) \in transitions A (arity (positions t) p)
     }
@@ -746,8 +725,6 @@ Definition reaches_transition (rn : frun) (k : [r.+2])
 
 End Runs.
 
-
-
 Section Acceptance.
 
 Variable r : nat.
@@ -770,6 +747,11 @@ Lemma fpos_nil (t : tterm r.+1 Sigma) :
   [::] \in fpos t.
 Proof. by rewrite in_fpos positions_nil. Qed.
 
+(*
+Definition ffsig_at (t : tterm r.+1 Sigma) :=
+  [fsfun p in (fpos t) => fsig_at t p | dSigma].
+*)
+
 Lemma reaches_state_eventually (t : tterm r.+1 Sigma) (q : state) :
   reflect
     (exists (rn : frun A t dstate dSigma), reaches_state rn q)
@@ -784,7 +766,7 @@ Proof.
       suff wfrho : wfrun A (tleaf r.+1 a) dSigma rho.
         by exists (FRun wfrho); rewrite rho0.
       apply /wfrunP => /= p.
-      by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite sig_at_head rho0.
+      by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite rho0.
     move=> a k f IH q /reach_eventuallyP /= [tr [trintrans tra trq trqs]].
     pose rho := [fsfun p in fpos (tnode a f) =>
       if p is j' :: s then
@@ -801,7 +783,7 @@ Proof.
       by exists (FRun wfrho); rewrite /reaches_state fsfun_fun fpos_nil.
     apply /wfrunP => p pinpos.
     have /positions_tnode [-> | [j [s [eqpsj sinpos]]]] := pinpos.
-      rewrite arity_positions sig_at_head fsfun_fun fpos_nil /=.
+      rewrite arity_positions fsfun_fun fpos_nil /=.
       set qs := [tuple of _].
       suff -> : qs = tr.1.1 by rewrite -tra -trq -2!surjective_pairing.
       apply: eq_from_tnth => i.
@@ -816,12 +798,7 @@ Proof.
       by have /eqP -> := xchooseP IHi.
     rewrite fsfun_fun in_fpos pinpos eqpsj.
     rewrite [X in (_, _, match X with [::] => _ | _ :: _ => _ end)]headI.
-    have -> : forall s,
-        last (head (wdord j) s) (behead (rcons s (wdord j))) = wdord j.
-      by case=> [// | hd tl /=]; rewrite last_rcons.
-    have -> : forall s,
-        belast (head (wdord j) s) (behead (rcons s (wdord j))) = s.
-      by case=> [// | hd tl /=]; rewrite belast_rcons.
+    rewrite last_headI belast_headI.
     have ltjk : wdord j < k by rewrite /=; apply: ltn_ord.
     case: (Sumbool.sumbool_of_bool _) => [ltjk' |]; last by rewrite ltjk.
     have -> : Ordinal ltjk' = j by apply /val_eqP.
@@ -829,7 +806,7 @@ Proof.
     have := xchooseP IHj.
     set rhoj := xchoose IHj => /eqP reachesj.
     have /wfrunP /(_ s) /(_ sinpos) := frun_wfrun rhoj.
-    rewrite arity_path sig_at_path.
+    rewrite arity_path fsig_at_path.
     set qsj := [tuple of _].
     set qs := [tuple of _].
     suff -> : qsj = qs by [].
@@ -920,7 +897,7 @@ Definition extends (t t' : tterm r.+1 Sigma) (rn : frun A t dstate dSigma)
     (rn' : frun A t' dstate dSigma) : Prop :=
   exists p : [r.+1*], forall u : [r.+1*],
       u \in positions t ->
-    (sig_at dSigma t u = sig_at dSigma t' (u ++ p))
+    (fsig_at dSigma t u = fsig_at dSigma t' (u ++ p))
     /\ (frho rn u = frho rn' (u ++ p)).
 
 End Runs2.

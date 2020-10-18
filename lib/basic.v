@@ -57,3 +57,15 @@ Lemma report_bug X Y (f g : X -> Y) :
 Proof.
   by rewrite tuple0; symmetry; rewrite tuple0.
 Qed.
+
+Lemma last_headI (T : Type) (x : T) (s : seq T) :
+  last (head x s) (behead (rcons s x)) = x.
+Proof.
+  by case: s => [// | hd tl /=]; rewrite last_rcons.
+Qed.
+
+Lemma belast_headI (T : Type) (x : T) (s : seq T) :
+  belast (head x s) (behead (rcons s x)) = s.
+Proof.
+  by case: s => [// | hd tl /=]; rewrite belast_rcons.
+Qed.
