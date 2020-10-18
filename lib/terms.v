@@ -399,6 +399,12 @@ Proof.
   by apply: mem_child => //; apply: positions_tree_like.
 Qed.
 
+(* TODO see if it exists / move to basic *)
+Lemma bigmax_map (T : Type) (s : seq T) (f : T -> nat) :
+  \max_(x <- s) f x = \max_(y <- map f s) y.
+Proof.
+Admitted.
+
 Lemma arity_path (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k)
     (p : [r.+1*]) (j : [k]) :
   arity (positions (tnode a f)) (rcons p (wdord j)) =
@@ -407,14 +413,25 @@ Proof.
   apply /val_eqP /eqP; rewrite 2!val_arity /arity_nat.
   set cspj := children _ (rcons _ _).
   set csp := children _ _.
-  have : map (head ord0) cspj = map (head ord0) csp.
+  suff: perm_eq [seq nat_of_ord (head ord0 c) | c <- cspj]
+                [seq nat_of_ord (head ord0 c) | c <- csp].
+    case eqcspj : cspj => [| cpj ccpj].
+      by case: csp => [// | ? ?]; rewrite perm_sym => /perm_nilP.
+    case eqcsp : csp => [| cp ccp]; first by move=> /perm_nilP.
+    move=> permeq; congr S.
+    by rewrite bigmax_map [in RHS]bigmax_map; apply: perm_big.
+  set hd := fun c => nat_of_ord _.
+  rewrite /cspj /csp.
+  apply: uniq_perm; first by admit.
     admit.
-  case eqcspj : cspj => [| cpj ccpj]; first by case: csp.
-  case eqcsp : csp => [//| cp ccp] eqmaphead.
-  congr S.
-  (*Search "eq" inside bigop.*)
-  (* maybe redefine arity in terms of map instead of the current version? *)
-  (*Search map inside bigop.*)
+  move=> c.
+  apply /mapP /mapP.
+    move=> [q [/childrenP [/is_parentP [i ->] qinpos]] ->].
+    exists (i :: p) => //.
+    by apply /childrenP; rewrite is_parent_trivial (positions_child a).
+  move=> [q [/childrenP [/is_parentP [i ->] qinpos]] ->].
+  exists (i :: rcons p (wdord j)) => //.
+  by apply /childrenP; rewrite is_parent_trivial -rcons_cons -positions_child.
 Admitted.
 
 End Tterms2.
