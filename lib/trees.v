@@ -376,6 +376,10 @@ Qed.
 Definition children (U : ptree r) (p : [r*]) : seq [r*] :=
   filter (is_parent p) U.
 
+Lemma children_uniq (U : ptree r) (p : [r*]) :
+  uniq U -> uniq (children U p).
+Proof. by apply: filter_uniq. Qed.
+
 Lemma childrenP (U : ptree r) (p c : [r*]) :
   reflect
     (is_parent p c /\ c \in U)
@@ -573,15 +577,20 @@ Proof.
   by rewrite in_cons eqxx.
 Qed.
 
+Lemma children_from_arity_uniq (p : [r.+1*]) :
+  uniq U -> uniq (children_from_arity p (arity U p)).
+Proof.
+  rewrite map_inj_in_uniq ?enum_uniq //= => n m _ _ /eqP.
+  by rewrite eqseq_cons wdord_eq => /andP [/eqP -> _].
+Qed.
+
 Lemma children_arityP (p : [r.+1*]) :
     tree_like U ->
     p \in U ->
   perm_eq (children U p) (children_from_arity p (arity U p)).
 Proof.
   move=> /tree_likeP [scU /well_numberedP wnU uniqU] pinU.
-  apply: uniq_perm; first by apply: filter_uniq.
-    rewrite map_inj_in_uniq ?enum_uniq //= => n m _ _ /eqP.
-    by rewrite eqseq_cons wdord_eq => /andP [/eqP -> _].
+  apply: uniq_perm; rewrite ?children_uniq ?children_from_arity_uniq //.
   move=> /= s.
   apply /idP /idP.
     case ischildren : (children U p) => [// | c cs]; rewrite -ischildren.

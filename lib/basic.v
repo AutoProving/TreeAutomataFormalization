@@ -69,3 +69,15 @@ Lemma belast_headI (T : Type) (x : T) (s : seq T) :
 Proof.
   by case: s => [// | hd tl /=]; rewrite belast_rcons.
 Qed.
+
+Lemma eq_mem0c (T : eqType) (x : T) (s : seq T) :
+  ~ (nil =i x :: s).
+Proof. by move=> /(_ x); rewrite in_nil in_cons eqxx. Qed.
+
+Lemma eq_memc0 (T : eqType) (x : T) (s : seq T) :
+  ~ (x :: s =i [::]).
+Proof. by move=> /(_ x); rewrite in_nil in_cons eqxx. Qed.
+
+Lemma bigmax_map (T : Type) (s : seq T) (f : T -> nat) :
+  \max_(x <- s) f x = \max_(y <- map f s) y.
+Proof. by rewrite big_map_id. Qed.
