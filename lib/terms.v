@@ -350,6 +350,12 @@ Definition tchildren (t : tterm) : seq tterm :=
 (* Lemma tchildren_children *)
 *)
 
+Lemma sig_at_path (dSigma a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*])
+    (j : [k]) :
+  sig_at dSigma (tnode a f) (rcons p (wdord j)) = sig_at dSigma (f j) p.
+Proof.
+Admitted.
+
 End Tterms.
 
 Section Tterms2.
@@ -381,7 +387,7 @@ Qed.
 Lemma arity_positions (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) :
   arity (positions (tnode a f)) [::] = k.
 Proof.
-  (*
+ (*
   rewrite /arity /=.
   case eqordenum : (ord_enum k) => [/=| i w].
     move: eqordenum; rewrite /ord_enum /=.
@@ -410,9 +416,26 @@ Lemma children_from_arity_positions (t : tterm r.+1 Sigma) (p q : [r.+1*]) :
     q \in children_from_arity p (arity (positions t) p) ->
   q \in positions t.
 Proof.
-  elim/tterm_nind: t => [a /= | a k f IH].
-    by rewrite arity0 children_from_arity0.
   move=> pinpos /children_from_arityP [i ->].
+  by apply: mem_child => //; apply: positions_tree_like.
+Qed.
+
+Lemma arity_path (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k)
+    (p : [r.+1*]) (j : [k]) :
+  arity (positions (tnode a f)) (rcons p (wdord j)) =
+  arity (positions (f j)) p.
+Proof.
+  apply /val_eqP /eqP; rewrite 2!val_arity /arity_nat.
+  set cspj := children _ (rcons _ _).
+  set csp := children _ _.
+  have : map (head ord0) cspj = map (head ord0) csp.
+    admit.
+  case eqcspj : cspj => [| cpj ccpj]; first by case: csp.
+  case eqcsp : csp => [//| cp ccp] eqmaphead.
+  congr S.
+  (*Search "eq" inside bigop.*)
+  (* maybe redefine arity in terms of map instead of the current version? *)
+  (*Search map inside bigop.*)
 Admitted.
 
 End Tterms2.
@@ -723,6 +746,8 @@ Definition reaches_transition (rn : frun) (k : [r.+2])
 
 End Runs.
 
+
+
 Section Acceptance.
 
 Variable r : nat.
@@ -777,7 +802,18 @@ Proof.
     apply /wfrunP => p pinpos.
     have /positions_tnode [-> | [j [s [eqpsj sinpos]]]] := pinpos.
       rewrite arity_positions sig_at_head fsfun_fun fpos_nil /=.
-      admit.
+      set qs := [tuple of _].
+      suff -> : qs = tr.1.1 by rewrite -tra -trq -2!surjective_pairing.
+      apply: eq_from_tnth => i.
+      rewrite tnth_map tnth_children_from_arity.
+      rewrite fsfun_fun /=.
+      have -> : [:: wdord i] \in fpos (tnode a f).
+        rewrite in_fpos -[[:: wdord i]]/(rcons [::] (wdord i)).
+        by rewrite -positions_child positions_nil.
+      case: (Sumbool.sumbool_of_bool _) => [ltik |]; last by rewrite ltn_ord.
+      have -> : Ordinal ltik = i by apply /val_eqP.
+      set IHi := IH _ _ _.
+      by have /eqP -> := xchooseP IHi.
     rewrite fsfun_fun in_fpos pinpos eqpsj.
     rewrite [X in (_, _, match X with [::] => _ | _ :: _ => _ end)]headI.
     have -> : forall s,
@@ -787,10 +823,25 @@ Proof.
         belast (head (wdord j) s) (behead (rcons s (wdord j))) = s.
       by case=> [// | hd tl /=]; rewrite belast_rcons.
     have ltjk : wdord j < k by rewrite /=; apply: ltn_ord.
-    case: (Sumbool.sumbool_of_bool _) => [ltjk' | //] {ltjk}.
+    case: (Sumbool.sumbool_of_bool _) => [ltjk' |]; last by rewrite ltjk.
+    have -> : Ordinal ltjk' = j by apply /val_eqP.
     set IHj := IH _ _ _.
     have := xchooseP IHj.
-    rewrite /reaches_state.
+    set rhoj := xchoose IHj => /eqP reachesj.
+    have /wfrunP /(_ s) /(_ sinpos) := frun_wfrun rhoj.
+    rewrite arity_path sig_at_path.
+    set qsj := [tuple of _].
+    set qs := [tuple of _].
+    suff -> : qsj = qs by [].
+    apply: eq_from_tnth => i.
+    do 2!rewrite tnth_map tnth_children_from_arity.
+    rewrite fsfun_fun.
+    have -> : wdord i :: rcons s (wdord j) \in fpos (tnode a f).
+      rewrite in_fpos -rcons_cons -positions_child.
+      by apply: mem_child => //; apply: positions_tree_like.
+    rewrite last_rcons belast_rcons.
+    case: (Sumbool.sumbool_of_bool _) => [ltjk'' |]; last by rewrite ltjk.
+    by have -> : Ordinal ltjk'' = j by apply /val_eqP.
   (*
   move: rn q qinfinal reachesrnq.
   elim/tterm_nind: t => [a rn q qinfinal /eqP reaches | a k f IH rn].

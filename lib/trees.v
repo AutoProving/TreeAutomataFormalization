@@ -524,13 +524,17 @@ Definition arity_nat (p : [r.+1*]) : nat :=
   if children U p is [::] then 0 else
     (\max_(c <- children U p) head ord0 c).+1.
 
-Lemma arity_val (p : [r.+1*]) :
+Lemma arity_nat_arity (p : [r.+1*]) :
   arity_nat p = arity U p.
 Proof.
   rewrite /arity_nat /arity.
   case: (children U p) => [// | c cs].
   by rewrite -S_So -bmaxn_bmaxo.
 Qed.
+
+Lemma val_arity (p : [r.+1*]) :
+  val (arity U p) = arity_nat p.
+Proof. by rewrite arity_nat_arity. Qed.
 
 Lemma arity_leaf (l : [r.+1*]) :
   is_leaf U l -> arity U l = ord0.
@@ -590,7 +594,7 @@ Proof.
     apply /eqP; rewrite eqseq_cons eqxx andbT; apply /eqP /val_eqP /eqP => /=.
     rewrite inordK //.
     have -> : n.+1 = (Ordinal ltn1r2) by [].
-    rewrite -isarity -arity_val /arity_nat ischildren -ischildren.
+    rewrite -isarity -arity_nat_arity /arity_nat ischildren -ischildren.
     rewrite -[j]/(head ord0 (j :: p)); apply: leq_bigmax_list.
     by apply /childrenP; rewrite is_parent_trivial sinU.
   move=> /children_from_arityP [i ->].
