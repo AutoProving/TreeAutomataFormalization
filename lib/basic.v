@@ -81,3 +81,7 @@ Proof. by move=> /(_ x); rewrite in_nil in_cons eqxx. Qed.
 Lemma bigmax_map (T : Type) (s : seq T) (f : T -> nat) :
   \max_(x <- s) f x = \max_(y <- map f s) y.
 Proof. by rewrite big_map_id. Qed.
+
+Lemma ordinalE (k : nat) (j : 'I_k) (ltjk : j < k) :
+  Ordinal ltjk = j.
+Proof. by apply /val_eqP. Qed.

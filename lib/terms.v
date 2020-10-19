@@ -230,20 +230,18 @@ Fixpoint fsig_at (dSigma : Sigma) (t : tterm) (p : [r*]) : Sigma :=
    | tleaf a, _ :: _ => dSigma
    | tnode a k f, [::] => a
    | tnode a k f, j :: p =>
-       match Sumbool.sumbool_of_bool (last j p < k) with
-        | left ltjk => fsig_at dSigma (f (Ordinal ltjk)) (belast j p)
-        | right _ => dSigma
-        end
+       oapp
+         (fun i => fsig_at dSigma (f i) (belast j p))
+         dSigma
+         (insub (val (last j p)))
    end.
 
 Lemma fsig_at_path (dSigma a : Sigma) (k : [r.+1]) (f : tterm^k) (p : [r*])
     (j : [k]) :
   fsig_at dSigma (tnode a f) (rcons p (wdord j)) = fsig_at dSigma (f j) p.
 Proof.
-  rewrite headI /= last_headI belast_headI.
-  case: (Sumbool.sumbool_of_bool _) => [ltjk |]; last by rewrite /= ltn_ord.
-  suff -> : Ordinal ltjk = j by [].
-  by apply /val_eqP.
+  rewrite headI /= last_headI belast_headI insubT /= ?ltn_ord // => ltjk.
+  by have -> : Ordinal ltjk = j by apply /val_eqP.
 Qed.
 
 Lemma fsig_at_head (d : Sigma) (t : tterm) :
@@ -779,13 +777,13 @@ Proof.
     move=> a k f IH q /reach_eventuallyP /= [tr [trintrans tra trq trqs]].
     pose rho := [fsfun p in fpos (tnode a f) =>
       if p is j' :: s then
-        match Sumbool.sumbool_of_bool (last j' s < k) with
-        | left ltlastj'sk =>
-            let j := Ordinal ltlastj'sk in
+       oapp
+         (fun j =>
             let rhoj := xchoose (IH j (tnth tr.1.1 j) (trqs j)) in
             rhoj (belast j' s)
-        | right _ => dstate
-        end
+         )
+         dstate
+         (insub (val (last j' s)))
       else q
     | dstate].
     suff wfrho : wfrun A (tnode a f) dSigma rho.
@@ -801,16 +799,17 @@ Proof.
       have -> : [:: wdord i] \in fpos (tnode a f).
         rewrite in_fpos -[[:: wdord i]]/(rcons [::] (wdord i)).
         by rewrite -positions_child positions_nil.
-      case: (Sumbool.sumbool_of_bool _) => [ltik |]; last by rewrite ltn_ord.
-      have -> : Ordinal ltik = i by apply /val_eqP.
+      rewrite insubT ?ltn_ord //= => ltik; rewrite ordinalE.
       set IHi := IH _ _ _.
       by have /eqP -> := xchooseP IHi.
     rewrite fsfun_fun in_fpos pinpos eqpsj.
     rewrite [X in (_, _, match X with [::] => _ | _ :: _ => _ end)]headI.
-    rewrite last_headI belast_headI.
-    have ltjk : wdord j < k by rewrite /=; apply: ltn_ord.
-    case: (Sumbool.sumbool_of_bool _) => [ltjk' |]; last by rewrite ltjk.
-    have -> : Ordinal ltjk' = j by apply /val_eqP.
+    rewrite last_headI belast_headI insubT => [/= | ltjk].
+      by rewrite /= ltn_ord.
+    Opaque children_from_arity positions fsig_at.
+    rewrite /=.
+    Transparent children_from_arity positions fsig_at.
+    rewrite ordinalE.
     set IHj := IH _ _ _.
     have := xchooseP IHj.
     set rhoj := xchoose IHj => /eqP reachesj.
@@ -825,24 +824,35 @@ Proof.
     have -> : wdord i :: rcons s (wdord j) \in fpos (tnode a f).
       rewrite in_fpos -rcons_cons -positions_child.
       by apply: mem_child => //; apply: positions_tree_like.
-    rewrite last_rcons belast_rcons.
-    case: (Sumbool.sumbool_of_bool _) => [ltjk'' |]; last by rewrite ltjk.
-    by have -> : Ordinal ltjk'' = j by apply /val_eqP.
-  (*
-  move: rn q qinfinal reachesrnq.
-  elim/tterm_nind: t => [a rn q qinfinal /eqP reaches | a k f IH rn].
-    have /wfrunP /= /(_ [::]) /(_ isT) := frun_wfrun rn a.
-    by rewrite arity0 tuple0 reaches sig_at_head.
-  move=> q qinfinal /eqP rnnilq; apply /reach_eventuallyP => /=.
-  have /wfrunP /(_ [::]) /(_ (positions_nil _)) := frun_wfrun rn a.
-  rewrite rnnilq arity_positions sig_at_head /=.
-  set tr := (_, _, _).
-  move=> trintrans; exists tr; split=> // j /=.
-  rewrite tnth_map tnth_children_from_arity.
+    by rewrite last_rcons belast_rcons insubT /= ordinalE.
+  move: q; elim/tterm_nind: t => [a q [rn /eqP rnnilq] | a k f IH q].
+    apply /reach_eventuallyP.
+    have /wfrunP /= /(_ [::]) /(_ isT) := frun_wfrun rn.
+    by rewrite arity0 tuple0 rnnilq.
+  move=> [rn /eqP rnnilq]; apply /reach_eventuallyP => /=.
+  exists ([tuple of [seq rn i | i <- children_from_arity [::] k]], a, q).
+  Opaque children_from_arity.
+  rewrite /=; split=> //.
+    have /wfrunP /(_ [::]) /(_ (positions_nil _)) := frun_wfrun rn.
+    by rewrite rnnilq arity_positions.
+  Transparent children_from_arity.
+  move=> j; rewrite tnth_map tnth_children_from_arity.
   apply: IH.
-  admit.
-*)
-Admitted.
+  rewrite /reaches_state.
+  pose rho := [fsfun p in fpos (f j) => rn (rcons p (wdord j)) | dstate].
+  suff wfrho : wfrun A (f j) dSigma rho.
+    by exists (FRun wfrho); rewrite fsfun_fun fpos_nil.
+  apply /wfrunP => /= p pinpos.
+  have /wfrunP /(_ (rcons p (wdord j))) := frun_wfrun rn.
+  rewrite -positions_child => /(_ pinpos).
+  rewrite fsig_at_path arity_path fsfun_fun in_fpos pinpos.
+  set qspj := [tuple of _].
+  set qsp := [tuple of _].
+  suff -> : qspj = qsp by [].
+  apply: eq_from_tnth => i.
+  do 2!rewrite tnth_map tnth_children_from_arity.
+  by rewrite fsfun_fun in_fpos rcons_cons mem_child ?positions_tree_like.
+Qed.
 
 Lemma accepts_is_accepting (t : tterm r.+1 Sigma) :
   reflect
