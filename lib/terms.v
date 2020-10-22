@@ -363,65 +363,50 @@ Proof.
     by apply: (Pchildren t) => // c /children_from_arityP [i ->]; apply: IH.
 Qed.
 
+Lemma children_indexesE (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k)
+    (p : [r.+1*]) :
+  perm_eq
+    (children_indexes (positions (tnode a f)) p)
+    [seq wdord i | i <- enum [k]].
+Proof.
+Admitted.
+
+Lemma bigmax_enum (n : nat) :
+  \max_(x <- enum [n.+1]) x = n.
+Proof.
+  (*rewrite big_enum big_enum_val /=.
+  Set Printing Coercions.
+  Search (#|_|) inside fintype.
+  rewrite card_ord.
+  Search card inside fintype.
+  elim: n.
+    Search "enum" inside bigop.
+    rewrite big_enum_val.
+*)
+Admitted.
+
 Lemma arity_positions (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) :
   arity (positions (tnode a f)) [::] = k.
 Proof.
   move: f; case: k; case=> [lt0r2 f | n ltn1r2 f].
     by rewrite /arity /=; apply /val_eqP.
   have ltnr1 : n < r.+1 by [].
-  suff : [:: Ordinal ltnr1] \in children (positions (tnode a f)) [::].
-    rewrite /arity.
-    case eqchildren : (children _ _) => [// | c cs] ninchildn.
-    set max := \big[_/_]_(_ <- _) _.
-    have -> : Ordinal ltn1r2 = So (Ordinal ltnr1).
-      admit.
-    congr So.
-    apply /val_eqP /eqP; rewrite /= /max -bmaxn_bmaxo.
-    (*
-    Opaque positions.
-    rewrite -eqchildren children_map bigmax_map -map_comp -bigmax_map /=.
-    rewrite /children_indexes.
-    *)
-    admit.
-  admit.
-  (*
+  rewrite /arity children_map.
   Opaque positions.
-  apply /val_eqP /eqP; rewrite /val /=.
-  Transparent positions.
-  rewrite /arity.
-  rewrite /=.
-  rewrite arity_size ?positions_tree_like ?positions_nil //.
-  Check children_map.
-  rewrite children_map size_map /children_indexes.
-  Print children_indexes.
-  Search children.
-  rewrite size_filter /= add0n count_flatten.
-  Search positions.
-  Search count flatten.
-*)
- (*
-  rewrite /arity /=.
-  case eqordenum : (ord_enum k) => [/=| i w].
-    move: eqordenum; rewrite /ord_enum /=.
-    case: {+}k; case => [/= i lti | n ltn1 H]; first by apply /eqP.
-    exfalso; move: H.
-    Opaque pmap.
-    rewrite /= -cat1s pmap_cat.
-    Transparent pmap.
-    rewrite /= /insub /=.
-    Search _ pmap cat.
-    Search _ cat cons.
-
-    have : iota 0 (Ordinal ltn1) <> [::].
-      rewrite /=.
-
-
-  move: f; case: k; case => [? ? /= | /=]; first by apply /eqP.
-  move=> n ltnr f.
-  rewrite /ord_enum /=.
-  set cs := children _ _.
-*)
-Admitted.
+  case eqchildren : (children_indexes _ _) => [/= | i cs /=].
+    move: eqchildren => /perm_nilP.
+    move: (children_indexesE a f [::]).
+    rewrite perm_sym => H1 H2.
+    have := perm_trans H1 H2.
+    rewrite /= => /perm_nilP /(f_equal size) /=.
+    by rewrite size_map size_enum_ord.
+  have -> : Ordinal ltn1r2 = So (Ordinal ltnr1) by apply /val_eqP.
+  congr So.
+  apply /val_eqP /eqP; rewrite /= /max -bmaxn_bmaxo -map_cons -eqchildren.
+  rewrite (perm_big _ (perm_map _ (children_indexesE _ _ _))) /=.
+  do 2!rewrite bigmax_map -map_comp -bigmax_map /=.
+  by rewrite bigmax_enum.
+Qed.
 
 Lemma children_from_arity_positions (t : tterm r.+1 Sigma) (p q : [r.+1*]) :
     p \in positions t ->
