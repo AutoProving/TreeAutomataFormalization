@@ -85,3 +85,9 @@ Proof. by rewrite big_map_id. Qed.
 Lemma ordinalE (k : nat) (j : 'I_k) (ltjk : j < k) :
   Ordinal ltjk = j.
 Proof. by apply /val_eqP. Qed.
+
+Lemma geq_minlS (m n : nat) : (minn m n).+1 <= m.+1.
+Proof. by rewrite -minnSS geq_minl. Qed.
+
+Lemma geq_minrS (m n : nat) : (minn m n).+1 <= n.+1.
+Proof. by rewrite -minnSS geq_minr. Qed.

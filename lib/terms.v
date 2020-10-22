@@ -366,6 +366,39 @@ Qed.
 Lemma arity_positions (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) :
   arity (positions (tnode a f)) [::] = k.
 Proof.
+  move: f; case: k; case=> [lt0r2 f | n ltn1r2 f].
+    by rewrite /arity /=; apply /val_eqP.
+  have ltnr1 : n < r.+1 by [].
+  suff : [:: Ordinal ltnr1] \in children (positions (tnode a f)) [::].
+    rewrite /arity.
+    case eqchildren : (children _ _) => [// | c cs] ninchildn.
+    set max := \big[_/_]_(_ <- _) _.
+    have -> : Ordinal ltn1r2 = So (Ordinal ltnr1).
+      admit.
+    congr So.
+    apply /val_eqP /eqP; rewrite /= /max -bmaxn_bmaxo.
+    (*
+    Opaque positions.
+    rewrite -eqchildren children_map bigmax_map -map_comp -bigmax_map /=.
+    rewrite /children_indexes.
+    *)
+    admit.
+  admit.
+  (*
+  Opaque positions.
+  apply /val_eqP /eqP; rewrite /val /=.
+  Transparent positions.
+  rewrite /arity.
+  rewrite /=.
+  rewrite arity_size ?positions_tree_like ?positions_nil //.
+  Check children_map.
+  rewrite children_map size_map /children_indexes.
+  Print children_indexes.
+  Search children.
+  rewrite size_filter /= add0n count_flatten.
+  Search positions.
+  Search count flatten.
+*)
  (*
   rewrite /arity /=.
   case eqordenum : (ord_enum k) => [/=| i w].
@@ -719,6 +752,14 @@ Definition reaches_state (rn : frun) (q : state) : bool :=
 Definition is_accepting (rn : frun) : bool :=
   has (reaches_state rn) (final A).
 
+Lemma is_acceptingP (rn : frun) :
+  reflect
+    (exists2 q, q \in final A & reaches_state rn q)
+    (is_accepting rn).
+Proof.
+  by apply /(iffP hasP).
+Qed.
+
 Definition reaches_transition (rn : frun) (k : [r.+2])
     (tr : k.-tuple state * Sigma * state) : bool :=
   (k == arity (positions t) [::] :> nat)
@@ -926,22 +967,22 @@ Section Intersection1.
 Variable (r : nat).
 Variable (Sig : finType).
 
-Definition restrict (state : finType) (A : tbuta r Sig state) (n : nat)
-    (nler : n < r.+1) : tbuta n Sig state :=
+Definition restrict (state : finType) (A : tbuta r.+1 Sig state) (n : nat)
+    (nler : n.+1 < r.+2) : tbuta n.+1 Sig state :=
   {|
     final := final A;
-    transitions := [ffun k : [n.+1] =>
+    transitions := [ffun k : [n.+2] =>
       (transitions A (widen_ord nler k))
     ];
   |}.
 
-Lemma restrict_uniq (state : finType) (A : buta r Sig state) (n : nat)
-      (nler : n < r.+1) :
+Lemma restrict_uniq (state : finType) (A : buta r.+1 Sig state) (n : nat)
+      (nler : n.+1 < r.+2) :
   tbuta_uniq (restrict A nler).
 Proof.
 Admitted.
 
-Lemma restrict_self (state : finType) (A : tbuta r Sig state) :
+Lemma restrict_self (state : finType) (A : tbuta r.+1 Sig state) :
   A = restrict A (ltnSn r).
 Proof.
 Admitted.
@@ -956,33 +997,109 @@ Definition mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
       tr12.1.1.2 == tr12.2.1.2].
 
 Definition merge
-    (trs1 : {ffun forall k : [r.+1], seq (k.-tuple st1 * Sig * st1)})
-    (trs2 : {ffun forall k : [r.+1], seq (k.-tuple st2 * Sig * st2)})
-  : {ffun forall k : [r.+1], seq (k.-tuple (st1 * st2)%type * Sig * (st1 * st2))}
+    (trs1 : {ffun forall k : [r.+2], seq (k.-tuple st1 * Sig * st1)})
+    (trs2 : {ffun forall k : [r.+2], seq (k.-tuple st2 * Sig * st2)})
+  : {ffun forall k : [r.+2], seq (k.-tuple (st1 * st2)%type * Sig * (st1 * st2))}
   :=
-  [ffun k : [r.+1] =>
+  [ffun k : [r.+2] =>
     [seq ([tuple of zip (val tr.1.1.1) (val tr.2.1.1)],
           tr.1.1.2,
           (tr.1.2, tr.2.2)
          ) | tr <- mergeable (trs1 k) (trs2 k)]
   ].
 
-Definition intersection1 (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2) :
-    tbuta r Sig (prod_finType st1 st2) :=
+Lemma in_merge
+    (trs1 : {ffun forall k : [r.+2], seq (k.-tuple st1 * Sig * st1)})
+    (trs2 : {ffun forall k : [r.+2], seq (k.-tuple st2 * Sig * st2)})
+    (k : [r.+2]) (qs : k.-tuple (st1 * st2)) (a : Sig) (q : st1 * st2) :
+  (qs, a, q) \in merge trs1 trs2 k
+    = (([tuple of unzip1 qs], a, q.1) \in trs1 k) && (([tuple of unzip2 qs], a, q.2) \in trs2 k).
+Proof.
+  rewrite ffunE.
+  apply /mapP /andP => /=.
+    move=> [x]; rewrite /mergeable mem_filter => /andP [/eqP eqSig].
+    move=> /allpairsP /= [y [y1 y2] eqxy] /=.
+    move: eqSig; rewrite eqxy => /= eqSig.
+    rewrite 2!pair_equal_spec => [[[-> ->] ->]] /=.
+    have -> : [tuple of unzip1 (zip y.1.1.1 y.2.1.1)] = y.1.1.1.
+      by apply /val_eqP => /=; rewrite unzip1_zip // 2!size_tuple.
+    have -> : [tuple of unzip2 (zip y.1.1.1 y.2.1.1)] = y.2.1.1.
+      by apply /val_eqP => /=; rewrite unzip2_zip // 2!size_tuple.
+    by rewrite {2}eqSig -!surjective_pairing.
+  move=> [tr1in1 tr2in2].
+  exists (([tuple of unzip1 qs], a, q.1), ([tuple of unzip2 qs], a, q.2)).
+    rewrite /mergeable mem_filter /= eqxx /=.
+    apply /allpairsP => /=.
+    by exists (([tuple of unzip1 qs], a, q.1), ([tuple of unzip2 qs], a, q.2)).
+  rewrite /= -surjective_pairing 2!pair_equal_spec; do 2!split=> //.
+  by apply /val_eqP => /=; rewrite zip_unzip.
+Qed.
+
+Lemma in_merge_exp
+    (trs1 : {ffun forall k : [r.+2], seq (k.-tuple st1 * Sig * st1)})
+    (trs2 : {ffun forall k : [r.+2], seq (k.-tuple st2 * Sig * st2)})
+    (k : [r.+2]) (qs1 : k.-tuple st1) (qs2 : k.-tuple st2) (a : Sig) (q1 : st1)
+    (q2 : st2) :
+  ([tuple of zip qs1 qs2], a, (q1, q2)) \in merge trs1 trs2 k
+    = ((qs1, a, q1) \in trs1 k) && ((qs2, a, q2) \in trs2 k).
+Proof.
+  rewrite in_merge /=.
+  have -> : [tuple of unzip1 (zip qs1 qs2)] = qs1.
+    by apply /val_eqP => /=; rewrite unzip1_zip // 2!size_tuple.
+  have -> : [tuple of unzip2 (zip qs1 qs2)] = qs2.
+    by apply /val_eqP => /=; rewrite unzip2_zip // 2!size_tuple.
+  by [].
+Qed.
+
+Definition intersection1 (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2) :
+    tbuta r.+1 Sig (prod_finType st1 st2) :=
   {|
     final := [seq (f1, f2) | f1 <- (final A1), f2 <- (final A2)];
     transitions := merge (transitions A1) (transitions A2);
   |}.
 
-Lemma intersection1_uniq (A1 : buta r Sig st1) (A2 : buta r Sig st2) :
+Lemma intersection1_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2) :
   tbuta_uniq (intersection1 A1 A2).
 Proof.
 Admitted.
 
-Lemma intersection1_accepts (A1 : tbuta r Sig st1) (A2 : tbuta r Sig st2)
-    (t : tterm r Sig) :
+Variable dst1 : st1.
+Variable dst2 : st2.
+Variable dSig : Sig.
+
+Lemma intersection1_accepts (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2)
+    (t : tterm r.+1 Sig) :
   accepts (intersection1 A1 A2) t = (accepts A1 t) && (accepts A2 t).
 Proof.
+  apply /(accepts_is_accepting _ (dst1, dst2) dSig) /andP.
+    move=> [rni /is_acceptingP /= [qs /allpairsP [[q1 q2] /= [q1f q2f ->]]]].
+    rewrite /reaches_state=> /eqP rnnil; split.
+      apply /(accepts_is_accepting _ dst1 dSig).
+      pose rho1 := [fsfun p in fpos t => (rni p).1 | dst1].
+      suff wfrho1 : wfrun A1 t dSig rho1.
+        exists (FRun wfrho1); apply /is_acceptingP; exists q1 => //.
+        by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
+      apply /wfrunP => p pinpos.
+      move: (frun_wfrun rni) => /wfrunP /(_ p) /(_ pinpos).
+      rewrite in_merge => /andP [inA1 _]; move: inA1.
+      rewrite fsfun_fun in_fpos pinpos.
+      congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+      apply: eq_from_tnth => i.
+      rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
+      by rewrite positions_tree_like.
+    apply /(accepts_is_accepting _ dst2 dSig).
+    pose rho2 := [fsfun p in fpos t => (rni p).2 | dst2].
+    suff wfrho2 : wfrun A2 t dSig rho2.
+      exists (FRun wfrho2); apply /is_acceptingP; exists q2 => //.
+      by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
+    apply /wfrunP => p pinpos.
+    move: (frun_wfrun rni) => /wfrunP /(_ p) /(_ pinpos).
+    rewrite in_merge => /andP [_].
+    rewrite fsfun_fun in_fpos pinpos.
+    congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+    apply: eq_from_tnth => i.
+    rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
+    by rewrite positions_tree_like.
 Admitted.
 
 End Intersection1.
@@ -993,20 +1110,25 @@ Variables (r1 r2 : nat).
 Variables (Sig : finType).
 Variables (st1 st2 : finType).
 
-Definition intersection (A1 : tbuta r1 Sig st1) (A2 : tbuta r2 Sig st2) :
-    tbuta (minn r1 r2) Sig (prod_finType st1 st2) :=
-  intersection1 (restrict A1 (geq_minl r1 r2)) (restrict A2 (geq_minr r1 r2)).
+Definition intersection (A1 : tbuta r1.+1 Sig st1) (A2 : tbuta r2.+1 Sig st2) :
+    tbuta (minn r1 r2).+1 Sig (prod_finType st1 st2) :=
+  intersection1 (restrict A1 (geq_minlS r1 r2)) (restrict A2 (geq_minrS r1 r2)).
 
-Lemma intersection_uniq (A1 : buta r1 Sig st1) (A2 : buta r2 Sig st2) :
+Lemma intersection_uniq (A1 : buta r1.+1 Sig st1) (A2 : buta r2.+1 Sig st2) :
   tbuta_uniq (intersection A1 A2).
 Proof.
 Admitted.
 
-Lemma intersection_accepts (A1 : tbuta r1 Sig st1) (A2 : tbuta r2 Sig st2)
-    (t : tterm (minn r1 r2) Sig) :
+Variable dst1 : st1.
+Variable dst2 : st2.
+Variable dSig : Sig.
+
+Lemma intersection_accepts (A1 : tbuta r1.+1 Sig st1)
+    (A2 : tbuta r2.+1 Sig st2)
+    (t : tterm (minn r1 r2).+1 Sig) :
   accepts (intersection A1 A2) t =
-    (accepts (restrict A1 (geq_minl r1 r2)) t)
-    && (accepts (restrict A2 (geq_minr r1 r2)) t).
+    (accepts (restrict A1 (geq_minlS r1 r2)) t)
+    && (accepts (restrict A2 (geq_minrS r1 r2)) t).
 Proof.
   by rewrite intersection1_accepts.
 Qed.
