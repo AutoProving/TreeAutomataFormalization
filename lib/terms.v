@@ -83,40 +83,52 @@ Unset Printing Implicit Defensive.
 (*                     with greater than n arity                               *)
 (*                                                                             *)
 (*                                     RUNS                                    *)
-(*   Let (A : tbuta r.+1 Sigma state) (t t' : tterm r.+1 Sigma) (d : Sigma)    *)
-(* (rho : [[r.+1*]] -> state) (rn : trun A t) (rn' : trun A t').                 *)
+(*   Let (dSigma : Sigma) (dstate : state) (A : tbuta r.+1 Sigma state)        *)
+(* (t t' : tterm r.+1 Sigma) (rho : [[r.+1*]] -> state)                          *)
+(* (rn : frun dSigma dstate A t) (rn' : frun dSigma dstate A t').              *)
 (*                                                                             *)
-(*  wfrun A t d rho == for each position p of t, if cs are the children of p,  *)
-(*                     then (map rho cs, fsig_at d t p, rho p) is a transition *)
-(*                     of A                                                    *)
-(*         trun A t == a function trho such that (t, trho) is                  *)
-(*                     (wfrun A t d rho) for every d                           *)
-(*     trun_size rn == the number of positions of the term of the run          *)
+(* wfrun dSigma A t rho == for each position p of t, if cs are the children of *)
+(*                     p, then (map rho cs, fsig_at dSigma t p, rho p) is a    *)
+(*                     transition of A                                         *)
+(* frun dSigma dstate A t == the type of well-formed runs, where an frun can   *)
+(*                     be built with the constructor @FRun frho W, where:      *)
+(*                     - frho : {fsfun [[r.+1*]] -> state with dstate}           *)
+(*                     - W : wfrun dSigma A t frho                             *)
+(*     frun_size rn == the number of positions of the term of the run          *)
 (*      reaches_state rn q == the state reached at the root is q               *)
 (*  is_accepting rn == the run rn reaches some accepting state                 *)
 (* reaches_transition rn k tr == the run rn reaches the k-transition k         *)
-(*  unambiguous A d == for each term t there is at most one rho such that      *)
-(*                     (wfrun A t d rho) holds                                 *)
-(* extends A t t' rn rn' d == there is a string p that can be appended to each *)
+(*           fpos t == the finite set corresponding to the positions of t      *)
+(* unambiguous dSigma A == for each term t there is at most one rho such that  *)
+(*                     (wfrun dSigma A t rho) holds                            *)
+(* extends A t t' rn rn' == there is a string p that can be appended to each   *)
 (*                     position of t to obtain the behaviour of rn'            *)
 (*                                                                             *)
-(*                                INTERSECTION                                 *)
-(*   Let (st1 st2 : finType)  (r1 r2 : nat)                                    *)
+(*                            INTERSECTION & UNION                             *)
+(*   Let (r n r1 r2 : nat) (Sig st1 st2 : finType)                             *)
 (* (trsik : seq (k.-tuple sti * Sig * sti))                                    *)
-(* (trsi : {ffun forall k : [[r.+1]], seq (k.-tuple sti * Sig * sti)})           *)
-(* (Ai : tbuta r Sigma sti) (Ai' : tbuta ri Sigma sti), with i = 1, 2.         *)
+(* (trsi : {ffun forall k : [[r.+2]], seq (k.-tuple sti * Sig * sti)})           *)
+(* (Ai : tbuta r.+1 Sigma sti) (Ai' : tbuta ri.+1 Sigma sti), with i = 1, 2.   *)
 (*                                                                             *)
+(* restrict A1 n (nler : n.+1 <= r.+1) == A1 restricted to the transitions of  *)
+(*                     arity <= n.+1                                           *)
 (* mergeable k trs1k trs2k == the list of pairs (tr1, tr2) such that           *)
 (*                     tr1 \in trs1k, tr2 \in trs2k, and the labels of tr1 and *)
 (*                     tr2 coincide                                            *)
-(*         merge trs1 trs2 == the result of merging the transition functions   *)
-(*                     tr1 and tr2                                             *)
-(*     intersection1 A1 A2 == the automaton whose final states are all the     *)
-(*                     pairs of final states from A1 and A2, and whose         *)
-(*                     transition function is the merge of the transition      *)
-(*                     functions of A1 and A2                                  *)
-(*    intersection A1' A2' == the intersection1 of the restrictions of A1' and *)
+(*  merge trs1 trs2 == the result of merging the transition functions tr1 and  *)
+(*                     tr2                                                     *)
+(* intersection1 A1 A2 == the automaton whose final states are all the pairs   *)
+(*                     of final states from A1 and A2, and whose transition    *)
+(*                     function is the merge of the transition functions of A1 *)
+(*                     and A2                                                  *)
+(*     union1 A1 A2 == the automaton whose final states are all the pairs in   *)
+(*                     which one of the elements is a final state from A1 or   *)
+(*                     A2, and whose transition function is the merge of the   *)
+(*                     transition functions of A1 and A2                       *)
+(* intersection A1' A2' == the intersection1 of the restrictions of A1' and    *)
 (*                     A2' to the minumum between r1 and r2                    *)
+(*    union A1' A2' == the union1 of the restrictions of A1' and A2' to the    *)
+(*                     minumum between r1 and r2                               *)
 
 
 Section Tterms.
@@ -679,9 +691,8 @@ Section Runs.
 Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
-Variable A : tbuta r.+1 Sigma state.
 
-Definition wfrun (t : tterm r.+1 Sigma) (d : Sigma)
+Definition wfrun (d : Sigma) (A : tbuta r.+1 Sigma state) (t : tterm r.+1 Sigma)
     (rho : [r.+1*] -> state) : bool :=
   all
     (fun p : [r.+1*] =>
@@ -693,16 +704,17 @@ Definition wfrun (t : tterm r.+1 Sigma) (d : Sigma)
     )
     (positions t).
 
-Lemma wfrun_default (t : tterm r.+1 Sigma) (d d' : Sigma)
-    (rho : [r.+1*] -> state) :
-  wfrun t d rho = wfrun t d' rho.
+Lemma wfrun_default (d d' : Sigma) (A : tbuta r.+1 Sigma state)
+    (t : tterm r.+1 Sigma) (rho : [r.+1*] -> state) :
+  wfrun d A t rho = wfrun d' A t rho.
 Proof.
   rewrite /wfrun.
   apply: eq_in_all => p pinpos.
   by rewrite (fsig_at_default d d' pinpos).
 Qed.
 
-Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
+Lemma wfrunP (d : Sigma) (A : tbuta r.+1 Sigma state) (t : tterm r.+1 Sigma)
+    (rho : [r.+1*] -> state) :
   reflect
     {in positions t, forall p,
       (
@@ -711,31 +723,19 @@ Lemma wfrunP (t : tterm r.+1 Sigma) (d : Sigma) (rho : [r.+1*] -> state) :
         rho p
       ) \in transitions A (arity (positions t) p)
     }
-    (wfrun t d rho).
+    (wfrun d A t rho).
 Proof.
   by apply: (iffP allP).
 Qed.
 
-(*
-Definition partial_run (rho : [r.+1*] -> state) (j : [r.+1])
-    : [r.+1*] -> state :=
-  fun p => rho (j :: p).
-
-Lemma partial_wfrun (rho : [r.+1*] -> state) (a : Sigma) (k : [r.+2])
-  (f : (tterm r.+1 Sigma)^k) (d : Sigma) :
-    wfrun (tnode a f) d rho ->
-  forall (j : [k]), wfrun (f j) d (partial_run rho (wdord j)).
-Proof.
-Admitted.
-*)
-
-Variable t : tterm r.+1 Sigma.
-Variable dstate : state.
 Variable dSigma : Sigma.
+Variable dstate : state.
+Variable A : tbuta r.+1 Sigma state.
+Variable t : tterm r.+1 Sigma.
 
 Record frun := FRun {
   frho :> {fsfun [r.+1*] -> state with dstate};
-  _ : wfrun t dSigma frho
+  _ : wfrun dSigma A t frho
 }.
 Canonical frun_subType := [subType for frho].
 Definition frun_eqMixin := [eqMixin of frun by <:].
@@ -743,7 +743,7 @@ Canonical frun_eqType := EqType frun frun_eqMixin.
 Definition frun_choiceMixin := [choiceMixin of frun by <:].
 Canonical frun_choiceType := ChoiceType frun frun_choiceMixin.
 
-Lemma frun_wfrun (rn : frun) : wfrun t dSigma (frho rn).
+Lemma frun_wfrun (rn : frun) : wfrun dSigma A t (frho rn).
 Proof. by case: rn. Qed.
 
 Definition frun_size (rn : frun) : nat :=
@@ -781,9 +781,9 @@ Section Acceptance.
 Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
-Variable A : tbuta r.+1 Sigma state.
-Variable dstate : state.
 Variable dSigma : Sigma.
+Variable dstate : state.
+Variable A : tbuta r.+1 Sigma state.
 
 Local Open Scope fset.
 
@@ -800,12 +800,12 @@ Proof. by rewrite in_fpos positions_nil. Qed.
 
 (*
 Definition ffsig_at (t : tterm r.+1 Sigma) :=
-  [fsfun p in (fpos t) => fsig_at t p | dSigma].
+  [fsfun p in (fpos t) => fsig_at dSigma t p | dSigma].
 *)
 
 Lemma reaches_state_eventually (t : tterm r.+1 Sigma) (q : state) :
   reflect
-    (exists (rn : frun A t dstate dSigma), reaches_state rn q)
+    (exists (rn : frun dSigma dstate A t), reaches_state rn q)
     (reach_eventually A q t).
 Proof.
   apply: (iffP idP).
@@ -814,7 +814,7 @@ Proof.
       rewrite /reaches_state.
       pose rho := [fsfun p : fpos (tleaf r.+1 a) => q | dstate].
       have rho0 : rho [::] = q by rewrite fsfun_fun fpos_nil.
-      suff wfrho : wfrun A (tleaf r.+1 a) dSigma rho.
+      suff wfrho : wfrun dSigma A (tleaf r.+1 a) rho.
         by exists (FRun wfrho); rewrite rho0.
       apply /wfrunP => /= p.
       by rewrite arity0 tuple0 mem_seq1 => /eqP ->; rewrite rho0.
@@ -830,7 +830,7 @@ Proof.
          (insub (val (last j' s)))
       else q
     | dstate].
-    suff wfrho : wfrun A (tnode a f) dSigma rho.
+    suff wfrho : wfrun dSigma A (tnode a f) rho.
       by exists (FRun wfrho); rewrite /reaches_state fsfun_fun fpos_nil.
     apply /wfrunP => p pinpos.
     have /positions_tnode [-> | [j [s [eqpsj sinpos]]]] := pinpos.
@@ -884,7 +884,7 @@ Proof.
   apply: IH.
   rewrite /reaches_state.
   pose rho := [fsfun p in fpos (f j) => rn (rcons p (wdord j)) | dstate].
-  suff wfrho : wfrun A (f j) dSigma rho.
+  suff wfrho : wfrun dSigma A (f j) rho.
     by exists (FRun wfrho); rewrite fsfun_fun fpos_nil.
   apply /wfrunP => /= p pinpos.
   have /wfrunP /(_ (rcons p (wdord j))) := frun_wfrun rn.
@@ -900,7 +900,7 @@ Qed.
 
 Lemma accepts_is_accepting (t : tterm r.+1 Sigma) :
   reflect
-    (exists (rn : frun A t dstate dSigma), is_accepting rn)
+    (exists (rn : frun dSigma dstate A t), is_accepting rn)
     (accepts A t).
 Proof.
   apply: (iffP idP).
@@ -919,16 +919,16 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 
-Definition unambiguous (A : tbuta r.+1 Sigma state) (d : Sigma) : Prop :=
+Definition unambiguous (d : Sigma) (A : tbuta r.+1 Sigma state) : Prop :=
   forall (t : tterm r.+1 Sigma) (rho1 rho2 : [r.+1*] -> state),
-    wfrun A t d rho1 -> wfrun A t d rho2 -> {in positions t, rho1 =1 rho2}.
+    wfrun d A t rho1 -> wfrun d A t rho2 -> {in positions t, rho1 =1 rho2}.
 
-Lemma unambiguous_deterministic (A : buta r.+1 Sigma state) (d : Sigma) :
-  deterministic A -> unambiguous A d.
+Lemma unambiguous_deterministic (d : Sigma) (A : buta r.+1 Sigma state) :
+  deterministic A -> unambiguous d A.
 Proof.
   move=> /deterministicP deterA.
   move=> t rho1 rho2 wf1 wf2 /=.
-  have {wf1 wf2} : wfrun A t d rho1 /\ wfrun A t d rho2 by split.
+  have {wf1 wf2} : wfrun d A t rho1 /\ wfrun d A t rho2 by split.
   move: t; apply: child_ind => /=.
     move=> t [wf1 wf2] l linpos lleaf.
     apply: deterA.
@@ -953,11 +953,11 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 Variable A : tbuta r.+1 Sigma state.
-Variable dstate : state.
 Variable dSigma : Sigma.
+Variable dstate : state.
 
-Definition extends (t t' : tterm r.+1 Sigma) (rn : frun A t dstate dSigma)
-    (rn' : frun A t' dstate dSigma) : Prop :=
+Definition extends (t t' : tterm r.+1 Sigma) (rn : frun dSigma dstate A t)
+    (rn' : frun dSigma dstate A t') : Prop :=
   exists p : [r.+1*], forall u : [r.+1*],
       u \in positions t ->
     (fsig_at dSigma t u = fsig_at dSigma t' (u ++ p))
@@ -1079,20 +1079,20 @@ Lemma union1_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2) :
 Proof.
 Admitted.
 
+Variable dSig : Sig.
 Variable dst1 : st1.
 Variable dst2 : st2.
-Variable dSig : Sig.
 
 Lemma intersection1_accepts (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2)
     (t : tterm r.+1 Sig) :
   accepts (intersection1 A1 A2) t = (accepts A1 t) && (accepts A2 t).
 Proof.
-  apply /(accepts_is_accepting _ (dst1, dst2) dSig) /andP.
+  apply /(accepts_is_accepting dSig (dst1, dst2)) /andP.
     move=> [rni /is_acceptingP /= [qs /allpairsP [[q1 q2] /= [q1f q2f ->]]]].
-    rewrite /reaches_state=> /eqP rnnil; split.
-      apply /(accepts_is_accepting _ dst1 dSig).
+    rewrite /reaches_state => /eqP rnnil; split.
+      apply /(accepts_is_accepting dSig dst1).
       pose rho1 := [fsfun p in fpos t => (rni p).1 | dst1].
-      suff wfrho1 : wfrun A1 t dSig rho1.
+      suff wfrho1 : wfrun dSig A1 t rho1.
         exists (FRun wfrho1); apply /is_acceptingP; exists q1 => //.
         by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
       apply /wfrunP => p pinpos.
@@ -1104,9 +1104,9 @@ Proof.
       rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
       by rewrite positions_tree_like.
     (* TODO this is a lot of code repetition *)
-    apply /(accepts_is_accepting _ dst2 dSig).
+    apply /(accepts_is_accepting dSig dst2).
     pose rho2 := [fsfun p in fpos t => (rni p).2 | dst2].
-    suff wfrho2 : wfrun A2 t dSig rho2.
+    suff wfrho2 : wfrun dSig A2 t rho2.
       exists (FRun wfrho2); apply /is_acceptingP; exists q2 => //.
       by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
     apply /wfrunP => p pinpos.
@@ -1123,14 +1123,14 @@ Lemma union1_accepts (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2)
     (t : tterm r.+1 Sig) :
   accepts (union1 A1 A2) t = (accepts A1 t) || (accepts A2 t).
 Proof.
-  apply /(accepts_is_accepting _ (dst1, dst2) dSig) /orP.
+  apply /(accepts_is_accepting dSig (dst1, dst2)) /orP.
     move=> [rni /is_acceptingP /= [qs]].
     rewrite mem_cat => /orP [/allpairsP [[q1 q2] /= [q1f _ ->]] |].
       rewrite /reaches_state=> /eqP rnnil; left.
       (* TODO this is a lot of code repetition *)
-      apply /(accepts_is_accepting _ dst1 dSig).
+      apply /(accepts_is_accepting dSig dst1 ).
       pose rho1 := [fsfun p in fpos t => (rni p).1 | dst1].
-      suff wfrho1 : wfrun A1 t dSig rho1.
+      suff wfrho1 : wfrun dSig A1 t rho1.
         exists (FRun wfrho1); apply /is_acceptingP; exists q1 => //.
         by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
       apply /wfrunP => p pinpos.
@@ -1144,9 +1144,9 @@ Proof.
     move=> /allpairsP [[q1 q2] /= [_ qf2 ->]].
     rewrite /reaches_state=> /eqP rnnil; right.
     (* TODO this is a lot of code repetition *)
-    apply /(accepts_is_accepting _ dst2 dSig).
+    apply /(accepts_is_accepting dSig dst2).
     pose rho2 := [fsfun p in fpos t => (rni p).2 | dst2].
-    suff wfrho2 : wfrun A2 t dSig rho2.
+    suff wfrho2 : wfrun dSig A2 t rho2.
       exists (FRun wfrho2); apply /is_acceptingP; exists q2 => //.
       by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
     apply /wfrunP => p pinpos.
