@@ -965,7 +965,7 @@ Definition extends (t t' : tterm r.+1 Sigma) (rn : frun A t dstate dSigma)
 
 End Runs2.
 
-Section Intersection1.
+Section AutomataComposition1.
 
 Variable (r : nat).
 Variable (Sig : finType).
@@ -1066,6 +1066,19 @@ Lemma intersection1_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2) :
 Proof.
 Admitted.
 
+Definition union1 (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2) :
+    tbuta r.+1 Sig (prod_finType st1 st2) :=
+  {|
+    final := [seq (f1, f2) | f1 <- (final A1), f2 <- enum st2]
+             ++ [seq (f1, f2) | f1 <- enum st1, f2 <- (final A2)];
+    transitions := merge (transitions A1) (transitions A2);
+  |}.
+
+Lemma union1_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2) :
+  tbuta_uniq (union1 A1 A2).
+Proof.
+Admitted.
+
 Variable dst1 : st1.
 Variable dst2 : st2.
 Variable dSig : Sig.
@@ -1090,6 +1103,7 @@ Proof.
       apply: eq_from_tnth => i.
       rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
       by rewrite positions_tree_like.
+    (* TODO this is a lot of code repetition *)
     apply /(accepts_is_accepting _ dst2 dSig).
     pose rho2 := [fsfun p in fpos t => (rni p).2 | dst2].
     suff wfrho2 : wfrun A2 t dSig rho2.
@@ -1105,9 +1119,49 @@ Proof.
     by rewrite positions_tree_like.
 Admitted.
 
-End Intersection1.
+Lemma union1_accepts (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2)
+    (t : tterm r.+1 Sig) :
+  accepts (union1 A1 A2) t = (accepts A1 t) || (accepts A2 t).
+Proof.
+  apply /(accepts_is_accepting _ (dst1, dst2) dSig) /orP.
+    move=> [rni /is_acceptingP /= [qs]].
+    rewrite mem_cat => /orP [/allpairsP [[q1 q2] /= [q1f _ ->]] |].
+      rewrite /reaches_state=> /eqP rnnil; left.
+      (* TODO this is a lot of code repetition *)
+      apply /(accepts_is_accepting _ dst1 dSig).
+      pose rho1 := [fsfun p in fpos t => (rni p).1 | dst1].
+      suff wfrho1 : wfrun A1 t dSig rho1.
+        exists (FRun wfrho1); apply /is_acceptingP; exists q1 => //.
+        by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
+      apply /wfrunP => p pinpos.
+      move: (frun_wfrun rni) => /wfrunP /(_ p) /(_ pinpos).
+      rewrite in_merge => /andP [inA1 _]; move: inA1.
+      rewrite fsfun_fun in_fpos pinpos.
+      congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+      apply: eq_from_tnth => i.
+      rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
+      by rewrite positions_tree_like.
+    move=> /allpairsP [[q1 q2] /= [_ qf2 ->]].
+    rewrite /reaches_state=> /eqP rnnil; right.
+    (* TODO this is a lot of code repetition *)
+    apply /(accepts_is_accepting _ dst2 dSig).
+    pose rho2 := [fsfun p in fpos t => (rni p).2 | dst2].
+    suff wfrho2 : wfrun A2 t dSig rho2.
+      exists (FRun wfrho2); apply /is_acceptingP; exists q2 => //.
+      by rewrite /reaches_state fsfun_fun fpos_nil rnnil.
+    apply /wfrunP => p pinpos.
+    move: (frun_wfrun rni) => /wfrunP /(_ p) /(_ pinpos).
+    rewrite in_merge => /andP [_].
+    rewrite fsfun_fun in_fpos pinpos.
+    congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+    apply: eq_from_tnth => i.
+    rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
+    by rewrite positions_tree_like.
+Admitted.
 
-Section Intersection.
+End AutomataComposition1.
+
+Section AutomataComposition.
 
 Variables (r1 r2 : nat).
 Variables (Sig : finType).
@@ -1119,6 +1173,15 @@ Definition intersection (A1 : tbuta r1.+1 Sig st1) (A2 : tbuta r2.+1 Sig st2) :
 
 Lemma intersection_uniq (A1 : buta r1.+1 Sig st1) (A2 : buta r2.+1 Sig st2) :
   tbuta_uniq (intersection A1 A2).
+Proof.
+Admitted.
+
+Definition union (A1 : tbuta r1.+1 Sig st1) (A2 : tbuta r2.+1 Sig st2) :
+    tbuta (minn r1 r2).+1 Sig (prod_finType st1 st2) :=
+  union1 (restrict A1 (geq_minlS r1 r2)) (restrict A2 (geq_minrS r1 r2)).
+
+Lemma union_uniq (A1 : buta r1.+1 Sig st1) (A2 : buta r2.+1 Sig st2) :
+  tbuta_uniq (union A1 A2).
 Proof.
 Admitted.
 
@@ -1136,4 +1199,14 @@ Proof.
   by rewrite intersection1_accepts.
 Qed.
 
-End Intersection.
+Lemma union_accepts (A1 : tbuta r1.+1 Sig st1)
+    (A2 : tbuta r2.+1 Sig st2)
+    (t : tterm (minn r1 r2).+1 Sig) :
+  accepts (union A1 A2) t =
+    (accepts (restrict A1 (geq_minlS r1 r2)) t)
+    || (accepts (restrict A2 (geq_minrS r1 r2)) t).
+Proof.
+  by rewrite union1_accepts.
+Qed.
+
+End AutomataComposition.
