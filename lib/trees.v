@@ -104,9 +104,13 @@ Definition wdord (k : [r.+1]) : [k] -> [r] :=
 Lemma wdord_eq (k : [r.+1]) (i j : [k]) :
   (wdord i == wdord j) = (i == j).
 Proof.
-  apply /idP /idP => [/eqP eqwdij | /eqP -> //].
-  have /= eqij : val (wdord i) = val (wdord j) by rewrite eqwdij.
-  by apply /eqP; apply: val_inj.
+  by apply /eqP /eqP; move=> /val_eqP /= /eqP eq; apply /val_eqP; rewrite /= eq.
+Qed.
+
+Lemma wdord_inj (k : [r.+1]) : injective [eta @wdord k].
+Proof.
+  move=> i j /val_eqP /eqP /= eqnij.
+  by apply /val_eqP => /=; rewrite eqnij.
 Qed.
 
 Definition maxo (m n : [r]) : [r] :=
@@ -548,6 +552,16 @@ Qed.
 
 Definition children_indexes (p : [r.+1*]) : seq [r.+1] :=
   map (head ord0) (children U p).
+
+Lemma children_indexes_uniq (p : [r.+1*]) :
+    tree_like U ->
+  uniq (children_indexes p).
+Proof.
+  move=> /tree_likeP [_ _ uniqU].
+  rewrite map_inj_in_uniq ?children_uniq //.
+  move=> /= c d /childrenP [/is_parentP [i ->] _].
+  by move=> /childrenP [/is_parentP [j ->] _] /= ->.
+Qed.
 
 Lemma children_map (p : [r.+1*]) :
   children U p = [seq i :: p | i <- children_indexes p].

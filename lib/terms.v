@@ -363,27 +363,45 @@ Proof.
     by apply: (Pchildren t) => // c /children_from_arityP [i ->]; apply: IH.
 Qed.
 
-Lemma children_indexesE (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k)
-    (p : [r.+1*]) :
+Lemma children_indexesE (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) :
   perm_eq
-    (children_indexes (positions (tnode a f)) p)
+    (children_indexes (positions (tnode a f)) [::])
     [seq wdord i | i <- enum [k]].
 Proof.
-Admitted.
+  apply: uniq_perm.
+  - by rewrite children_indexes_uniq // positions_tree_like.
+  - by rewrite map_inj_uniq ?enum_uniq //; apply: wdord_inj.
+  Opaque positions.
+  move=> i; apply /idP /idP.
+    move=> /mapP /= [c /childrenP [/is_parentP [j ->] jpinpos] ->] /=.
+    apply /mapP => /=.
+    exists (Ordinal (positions_last jpinpos)).
+      by rewrite mem_enum inE.
+    by apply /val_eqP => /=.
+  move=> /mapP /= [j _ ->].
+  apply /mapP => /=; exists [:: wdord j] => //.
+  Transparent positions.
+  apply /childrenP; rewrite /is_parent /=; split => //=.
+  rewrite in_cons /=; apply /allpairsPdep => /=.
+  exists j; exists [::] => /=.
+  by rewrite mem_ord_enum positions_nil.
+Qed.
 
 Lemma bigmax_enum (n : nat) :
   \max_(x <- enum [n.+1]) x = n.
 Proof.
-  (*rewrite big_enum big_enum_val /=.
-  Set Printing Coercions.
-  Search (#|_|) inside fintype.
-  rewrite card_ord.
-  Search card inside fintype.
-  elim: n.
-    Search "enum" inside bigop.
-    rewrite big_enum_val.
-*)
-Admitted.
+  Opaque iota.
+  rewrite -(big_map val [pred x | true] id) val_enum_ord /=.
+  Transparent iota.
+  have iota_perm : forall n, perm_eq (iota 0 n.+1) (n :: (iota 0 n)).
+    move=> m; apply: uniq_perm; first by rewrite iota_uniq.
+      by rewrite cons_uniq iota_uniq andbT mem_iota add0n /= -leqNgt.
+    move=> i; rewrite mem_iota in_cons mem_iota 2!add0n leq0n /=.
+    by rewrite ltnS leq_eqVlt.
+  elim: n => [| n IH]; first by rewrite big_cons big_nil.
+  rewrite (perm_big _ (iota_perm _)) /= big_cons IH.
+  by apply /maxn_idPl.
+Qed.
 
 Lemma arity_positions (a : Sigma) (k : [r.+2]) (f : (tterm r.+1 Sigma)^k) :
   arity (positions (tnode a f)) [::] = k.
@@ -395,7 +413,7 @@ Proof.
   Opaque positions.
   case eqchildren : (children_indexes _ _) => [/= | i cs /=].
     move: eqchildren => /perm_nilP.
-    move: (children_indexesE a f [::]).
+    move: (children_indexesE a f).
     rewrite perm_sym => H1 H2.
     have := perm_trans H1 H2.
     rewrite /= => /perm_nilP /(f_equal size) /=.
@@ -403,7 +421,7 @@ Proof.
   have -> : Ordinal ltn1r2 = So (Ordinal ltnr1) by apply /val_eqP.
   congr So.
   apply /val_eqP /eqP; rewrite /= /max -bmaxn_bmaxo -map_cons -eqchildren.
-  rewrite (perm_big _ (perm_map _ (children_indexesE _ _ _))) /=.
+  rewrite (perm_big _ (perm_map _ (children_indexesE _ _))) /=.
   do 2!rewrite bigmax_map -map_comp -bigmax_map /=.
   by rewrite bigmax_enum.
 Qed.
