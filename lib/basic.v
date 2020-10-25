@@ -91,3 +91,13 @@ Proof. by rewrite -minnSS geq_minl. Qed.
 
 Lemma geq_minrS (m n : nat) : (minn m n).+1 <= n.+1.
 Proof. by rewrite -minnSS geq_minr. Qed.
+
+Lemma tnth_zip [S T : eqType] (n : nat) (s : n.-tuple S) (t : n.-tuple T)
+    (i : 'I_n) :
+  tnth [tuple of zip s t] i = (tnth s i, tnth t i).
+Proof.
+  rewrite /tnth -nth_zip /=; last by rewrite 2!size_tuple.
+  have ltis : i < size [tuple of zip s t].
+    by have /eqP -> := (zip_tupleP s t); rewrite ltn_ord.
+  by apply: set_nth_default.
+Qed.

@@ -260,11 +260,6 @@ Lemma fsig_at_head (d : Sigma) (t : tterm) :
   fsig_at d t [::] = head_sig t.
 Proof. by case: t. Qed.
 
-Lemma fsig_at_default (d d' : Sigma) (t : tterm) :
-  {in positions t, fsig_at d t =1 fsig_at d' t}.
-Proof.
-Admitted.
-
 Lemma positions_nil (t : tterm) :
   [::] \in positions t.
 Proof. by case: t. Qed.
@@ -296,6 +291,20 @@ Lemma positions_last (a : Sigma) (k : [r.+1]) (f : tterm^k) (j : [r]) (p : [r*])
 Proof.
   rewrite /= in_cons /= => /allpairsPdep /= [i [q [_ qinpos /eqP]]].
   by rewrite lastI eqseq_rcons => /andP [_ /eqP ->] /=; apply: ltn_ord.
+Qed.
+
+Lemma fsig_at_default (d d' : Sigma) (t : tterm) :
+  {in positions t, fsig_at d t =1 fsig_at d' t}.
+Proof.
+  Opaque positions.
+  elim/tterm_nind: t => [a | a k f IH /=].
+    by case.
+  case/lastP=> //= p j.
+  rewrite headI => inpos; move: inpos (positions_last inpos).
+  rewrite belast_headI last_headI -headI => inpos ltjk.
+  rewrite insubT /= IH // (positions_child a).
+  by have -> : wdord (Ordinal ltjk) = j by apply /val_eqP.
+  Transparent positions.
 Qed.
 
 Lemma positions_tree_like (t : tterm) : tree_like (positions t).
@@ -480,9 +489,9 @@ Variable r : nat.
 Variable Sigma : finType.
 Variable state : finType.
 
-Record tbuta : Type := {
+Record tbuta : Type := TBUTA {
   final : seq state;
-  transitions : {ffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
+  transitions : {dffun forall k : [r.+1], seq (k.-tuple state * Sigma * state)}
 }.
 
 Definition tbuta_uniq (A : tbuta) : bool :=
@@ -980,15 +989,23 @@ Definition restrict (state : finType) (A : tbuta r.+1 Sig state) (n : nat)
   |}.
 
 Lemma restrict_uniq (state : finType) (A : buta r.+1 Sig state) (n : nat)
-      (nler : n.+1 < r.+2) :
-  tbuta_uniq (restrict A nler).
+      (lenr : n.+1 < r.+2) :
+  tbuta_uniq (restrict A lenr).
 Proof.
-Admitted.
+  apply /tbuta_uniqP => k /=; rewrite ffunE.
+  by move /tbuta_uniqP /(_ (widen_ord lenr k)) : (buta_uniq A).
+Qed.
 
 Lemma restrict_self (state : finType) (A : tbuta r.+1 Sig state) :
-  A = restrict A (ltnSn r).
+  A = restrict A (ltnSn r.+1).
 Proof.
-Admitted.
+  move: A => [fin tr]; rewrite /restrict /=.
+  congr TBUTA; apply /ffunP => /= k; rewrite ffunE.
+  case: k => k ltkr2.
+  rewrite /widen_ord.
+  suff -> : (widen_ord_proof (Ordinal ltkr2) (ltnSn r.+1)) = ltkr2 by [].
+  by apply: bool_irrelevance.
+Qed.
 
 Variables (st1 st2 : finType).
 
@@ -998,6 +1015,45 @@ Definition mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
     (trs2 : seq (k.-tuple st2 * Sig * st2)) :=
   [seq tr12 <- [seq (tr1, tr2) | tr1 <- trs1, tr2 <- trs2] |
       tr12.1.1.2 == tr12.2.1.2].
+
+Lemma in_mergeable (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
+    (trs2 : seq (k.-tuple st2 * Sig * st2)) x :
+  (x \in mergeable trs1 trs2)
+  = [&& x.1 \in trs1,
+      x.2 \in trs2 &
+      x.1.1.2 == x.2.1.2
+    ].
+Proof.
+  rewrite mem_filter; apply /andP /and3P.
+    move=> [/eqP -> /allpairsP /= [y]]; rewrite -(surjective_pairing y).
+    by move=> [+ + ->].
+  move=> [x1in x2in ->]; split=> //.
+  by apply /allpairsP => /=; exists x; rewrite -(surjective_pairing x).
+Qed.
+
+Lemma mergeableP (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
+    (trs2 : seq (k.-tuple st2 * Sig * st2)) x :
+  reflect
+    [/\ x.1 \in trs1,
+      x.2 \in trs2 &
+      x.1.1.2 = x.2.1.2
+    ]
+    (x \in mergeable trs1 trs2).
+Proof.
+  rewrite in_mergeable; apply (iffP and3P).
+    by move=> [-> -> /eqP ->].
+  by move=> [-> -> ->].
+Qed.
+
+Lemma mergeable_uniq (k : nat) (trs1 : seq (k.-tuple st1 * Sig * st1))
+    (trs2 : seq (k.-tuple st2 * Sig * st2)) :
+    uniq trs1 ->
+    uniq trs2 ->
+  uniq (mergeable trs1 trs2).
+Proof.
+  move=> uniqtrs1 uniqtrs2; apply: filter_uniq; apply: allpairs_uniq => //=.
+  by move=> [? ?] [? ?].
+Qed.
 
 Definition merge
     (trs1 : {ffun forall k : [r.+2], seq (k.-tuple st1 * Sig * st1)})
@@ -1054,6 +1110,19 @@ Proof.
   by [].
 Qed.
 
+Lemma merge_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2)
+    (k : [r.+2]) :
+  uniq (merge (transitions A1) (transitions A2) k).
+Proof.
+  rewrite /merge ffunE map_inj_in_uniq ?mergeable_uniq ?buta_uniq_trans //.
+  move=> /= [[[qs1 a1] q1] [[qs2 a2] q2]] [[[qs1' a1'] q1'] [[qs2' a2'] q2']].
+  move=> /mergeableP /= [_ _ <-] /mergeableP /= [_ _ <-].
+  rewrite !pair_equal_spec => [[[/eqP + <-] [<- <-]]].
+  rewrite eqEtuple => /'forall_eqP /= eq.
+  by do 3!split=> //; apply: eq_from_tnth => i; move: (eq i);
+      rewrite 2!tnth_zip pair_equal_spec => [[]].
+Qed.
+
 Definition intersection1 (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2) :
     tbuta r.+1 Sig (prod_finType st1 st2) :=
   {|
@@ -1064,7 +1133,8 @@ Definition intersection1 (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2) :
 Lemma intersection1_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2) :
   tbuta_uniq (intersection1 A1 A2).
 Proof.
-Admitted.
+  by apply /tbuta_uniqP => /=; apply: merge_uniq.
+Qed.
 
 Definition union1 (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2) :
     tbuta r.+1 Sig (prod_finType st1 st2) :=
@@ -1077,7 +1147,8 @@ Definition union1 (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2) :
 Lemma union1_uniq (A1 : buta r.+1 Sig st1) (A2 : buta r.+1 Sig st2) :
   tbuta_uniq (union1 A1 A2).
 Proof.
-Admitted.
+  by apply /tbuta_uniqP => /=; apply: merge_uniq.
+Qed.
 
 Variable dSig : Sig.
 Variable dst1 : st1.
@@ -1239,7 +1310,13 @@ Definition intersection (A1 : tbuta r1.+1 Sig st1) (A2 : tbuta r2.+1 Sig st2) :
 Lemma intersection_uniq (A1 : buta r1.+1 Sig st1) (A2 : buta r2.+1 Sig st2) :
   tbuta_uniq (intersection A1 A2).
 Proof.
-Admitted.
+  rewrite /intersection.
+  pose A1r := BUTA (restrict_uniq A1 (geq_minlS r1 r2)).
+  pose A2r := BUTA (restrict_uniq A2 (geq_minrS r1 r2)).
+  rewrite -[restrict A1 _]/(tbuta_of_buta A1r).
+  rewrite -[restrict A2 _]/(tbuta_of_buta A2r).
+  by apply: intersection1_uniq.
+Qed.
 
 Definition union (A1 : tbuta r1.+1 Sig st1) (A2 : tbuta r2.+1 Sig st2) :
     tbuta (minn r1 r2).+1 Sig (prod_finType st1 st2) :=
@@ -1248,7 +1325,13 @@ Definition union (A1 : tbuta r1.+1 Sig st1) (A2 : tbuta r2.+1 Sig st2) :
 Lemma union_uniq (A1 : buta r1.+1 Sig st1) (A2 : buta r2.+1 Sig st2) :
   tbuta_uniq (union A1 A2).
 Proof.
-Admitted.
+  rewrite /union.
+  pose A1r := BUTA (restrict_uniq A1 (geq_minlS r1 r2)).
+  pose A2r := BUTA (restrict_uniq A2 (geq_minrS r1 r2)).
+  rewrite -[restrict A1 _]/(tbuta_of_buta A1r).
+  rewrite -[restrict A2 _]/(tbuta_of_buta A2r).
+  by apply: union1_uniq.
+Qed.
 
 Variable dst1 : st1.
 Variable dst2 : st2.
