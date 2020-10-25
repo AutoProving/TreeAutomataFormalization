@@ -1117,10 +1117,33 @@ Proof.
     apply: eq_from_tnth => i.
     rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
     by rewrite positions_tree_like.
-Admitted.
+  move=> [/(accepts_is_accepting dSig dst1) [rn1 /is_acceptingP [q1 q1f]]].
+  move=> /eqP rn1nil.
+  move=> /(accepts_is_accepting dSig dst2) [rn2 /is_acceptingP [q2 q2f]].
+  move=> /eqP rn2nil.
+  pose rho := [fsfun p in fpos t => (rn1 p, rn2 p) | (dst1, dst2)].
+  suff wfrho : wfrun dSig (intersection1 A1 A2) t rho.
+    exists (FRun wfrho); apply /is_acceptingP; exists (q1, q2).
+      by apply /allpairsP; exists (q1, q2).
+    by rewrite /reaches_state fsfun_fun fpos_nil rn1nil rn2nil.
+  apply /wfrunP => p pinpos.
+  Opaque children_from_arity.
+  rewrite in_merge fsfun_fun in_fpos pinpos /=; apply /andP; split.
+    move: (frun_wfrun rn1) => /wfrunP /(_ p) /(_ pinpos).
+    congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+    apply: eq_from_tnth => i.
+    rewrite !tnth_map tnth_ord_tuple fsfun_fun in_fpos mem_child //.
+    by apply: positions_tree_like.
+  move: (frun_wfrun rn2) => /wfrunP /(_ p) /(_ pinpos).
+  congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+  apply: eq_from_tnth => i.
+  rewrite !tnth_map tnth_ord_tuple fsfun_fun in_fpos mem_child //.
+  by apply: positions_tree_like.
+Qed.
 
 Lemma union1_accepts (A1 : tbuta r.+1 Sig st1) (A2 : tbuta r.+1 Sig st2)
-    (t : tterm r.+1 Sig) :
+    (t : tterm r.+1 Sig) (drn1 : frun dSig dst1 A1 t)
+    (drn2 : frun dSig dst2 A2 t) :
   accepts (union1 A1 A2) t = (accepts A1 t) || (accepts A2 t).
 Proof.
   apply /(accepts_is_accepting dSig (dst1, dst2)) /orP.
@@ -1157,7 +1180,49 @@ Proof.
     apply: eq_from_tnth => i.
     rewrite 3!tnth_map tnth_children_from_arity fsfun_fun in_fpos mem_child //.
     by rewrite positions_tree_like.
-Admitted.
+  move=> [/(accepts_is_accepting dSig dst1) [rn1 /is_acceptingP [q1 q1f]] |].
+    move=> /eqP rn1nil.
+    pose rho := [fsfun p in fpos t => (rn1 p, drn2 p) | (dst1, dst2)].
+    suff wfrho : wfrun dSig (union1 A1 A2) t rho.
+      exists (FRun wfrho); apply /is_acceptingP; exists (q1, drn2 [::]).
+        rewrite mem_cat; apply /orP; left.
+        by apply /allpairsP; exists (q1, drn2 [::]); rewrite mem_enum.
+      by rewrite /reaches_state fsfun_fun fpos_nil rn1nil.
+    apply /wfrunP => p pinpos.
+    Opaque children_from_arity.
+    rewrite in_merge fsfun_fun in_fpos pinpos /=; apply /andP; split.
+      move: (frun_wfrun rn1) => /wfrunP /(_ p) /(_ pinpos).
+      congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+      apply: eq_from_tnth => i.
+      rewrite !tnth_map tnth_ord_tuple fsfun_fun in_fpos mem_child //.
+      by apply: positions_tree_like.
+    move: (frun_wfrun drn2) => /wfrunP /(_ p) /(_ pinpos).
+    congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+    apply: eq_from_tnth => i.
+    rewrite !tnth_map tnth_ord_tuple fsfun_fun in_fpos mem_child //.
+    by apply: positions_tree_like.
+  move=> /(accepts_is_accepting dSig dst2) [rn2 /is_acceptingP [q2 q2f]].
+  move=> /eqP rn2nil.
+  pose rho := [fsfun p in fpos t => (drn1 p, rn2 p) | (dst1, dst2)].
+  suff wfrho : wfrun dSig (union1 A1 A2) t rho.
+    exists (FRun wfrho); apply /is_acceptingP; exists (drn1 [::], q2).
+      rewrite mem_cat; apply /orP; right.
+      by apply /allpairsP; exists (drn1 [::], q2); rewrite mem_enum.
+    by rewrite /reaches_state fsfun_fun fpos_nil rn2nil.
+  apply /wfrunP => p pinpos.
+  Opaque children_from_arity.
+  rewrite in_merge fsfun_fun in_fpos pinpos /=; apply /andP; split.
+    move: (frun_wfrun drn1) => /wfrunP /(_ p) /(_ pinpos).
+    congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+    apply: eq_from_tnth => i.
+    rewrite !tnth_map tnth_ord_tuple fsfun_fun in_fpos mem_child //.
+    by apply: positions_tree_like.
+  move: (frun_wfrun rn2) => /wfrunP /(_ p) /(_ pinpos).
+  congr in_mem; rewrite 2!pair_equal_spec; split=> //; split=> //.
+  apply: eq_from_tnth => i.
+  rewrite !tnth_map tnth_ord_tuple fsfun_fun in_fpos mem_child //.
+  by apply: positions_tree_like.
+Qed.
 
 End AutomataComposition1.
 
@@ -1201,12 +1266,14 @@ Qed.
 
 Lemma union_accepts (A1 : tbuta r1.+1 Sig st1)
     (A2 : tbuta r2.+1 Sig st2)
-    (t : tterm (minn r1 r2).+1 Sig) :
+    (t : tterm (minn r1 r2).+1 Sig)
+    (drn1 : frun dSig dst1 (restrict A1 (geq_minlS r1 r2)) t)
+    (drn2 : frun dSig dst2 (restrict A2 (geq_minrS r1 r2)) t) :
   accepts (union A1 A2) t =
     (accepts (restrict A1 (geq_minlS r1 r2)) t)
     || (accepts (restrict A2 (geq_minrS r1 r2)) t).
 Proof.
-  by rewrite union1_accepts.
+  by rewrite (union1_accepts drn1 drn2).
 Qed.
 
 End AutomataComposition.
