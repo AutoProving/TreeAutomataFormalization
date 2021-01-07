@@ -425,20 +425,6 @@ Proof.
   by rewrite andbT; apply /(is_ancestorP U); exists s.
 Qed.
 
-Lemma descendants_subtree_tree_like (U : ptree r) (p : [r*]) :
-    tree_like U ->
-    p \in U ->
-  tree_like (descendants_subtree U p).
-Proof.
-  move=> /and3P [scU wnU uniqU] pinU.
-  apply /and3P; split.
-  - admit.
-  - admit.
-  - rewrite map_inj_in_uniq ?descendants_uniq //.
-    move=> /= d1 d2 /descendantsP [s1 [-> _]] /descendantsP [s2 [-> _]].
-    by rewrite 2!size_cat 2!addnmBm 2!take_cat 2!ltnn 2!subnn take0 2!cats0 =>->.
-Admitted.
-
 Definition is_leaf (U : ptree r) (s : [r*]) :=
   all (fun p => ~~ (is_parent s p)) U.
 
