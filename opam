@@ -1,9 +1,9 @@
 opam-version: "2.0"
-name: "tree-decomposition-formalization"
+name: "tree-automata-formalization"
 maintainer: "Ana de Almeida Borges <ana.agvb@gmail.com>"
 
-homepage: "https://github.com/mateusoliveiraoliveira/TreeDecompositionsFormalization"
-bug-reports: "https://github.com/mateusoliveiraoliveira/TreeDecompositionsFormalization/issues"
+homepage: "https://github.com/mateusoliveiraoliveira/TreeAutomataFormalization"
+bug-reports: "https://github.com/mateusoliveiraoliveira/TreeAutomataFormalization/issues"
 license: "MIT"
 
 build: [ make "-j" "%{jobs}%" ]
@@ -14,9 +14,9 @@ depends: [
   "coq-mathcomp-finmap" { (>= "1.5.0" & < "1.6~") }
 ]
 
-tags: [ "keyword:tree" "keyword:tree-automata" "keyword:tree-decomposition" ]
+tags: [ "keyword:tree" "keyword:tree-automata" ]
 authors: [ "Ana de Almeida Borges <ana.agvb@gmail.com>" ]
-synopsis: "Formalized tree decompositions"
+synopsis: "Formalization of Basic Constructions in Tree Automata Theory"
 description: """
-Formalized tree decompositions
+Formalization of Basic Constructions in Tree Automata Theory
 """
