@@ -2,6 +2,10 @@
 
 ## Dependencies
 
+This project depends on [Coq](https://coq.inria.fr/) 8.12, [MathComp ssreflect](https://math-comp.github.io/) 1.11, and [MathComp finmap](https://github.com/math-comp/finmap) 1.5.
+
+### Instal dependencies with opam
+
 Version 2 of [opam](https://opam.ocaml.org/doc/Install.html) is needed.
 
 To get the coq-released repo for opam 2, run: 
