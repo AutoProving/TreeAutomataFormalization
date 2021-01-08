@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This project depends on [Coq](https://coq.inria.fr/) 8.12, [MathComp ssreflect](https://math-comp.github.io/) 1.11, and [MathComp finmap](https://github.com/math-comp/finmap) 1.5.
+This project depends on [Coq](https://coq.inria.fr/) 8.12 or 8.13, [MathComp ssreflect](https://math-comp.github.io/) 1.11 or 1.12, and [MathComp finmap](https://github.com/math-comp/finmap) 1.5.
 
 ### Instal dependencies with opam
 

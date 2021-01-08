@@ -7,7 +7,7 @@ Unset Printing Implicit Defensive.
 Lemma rcons_nil (T : eqType) (s : seq T) (x : T) :
   (rcons s x == [::]) = false.
 Proof. by case: s. Qed.
-Hint Resolve rcons_nil : core.
+Global Hint Resolve rcons_nil : core.
 
 Lemma addnmBm (n m : nat) : n + m - m = n.
 Proof. by rewrite -{2}[m]/(0 + m) subnDr subn0. Qed.
