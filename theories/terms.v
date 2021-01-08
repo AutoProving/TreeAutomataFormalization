@@ -1,6 +1,4 @@
-Set Warnings "-notation-overridden, -notation-incompatible-format".
 From mathcomp Require Import all_ssreflect finmap.
-Set Warnings "notation-overridden, notation-incompatible-format".
 
 Require Import Coq.Program.Wf.
 

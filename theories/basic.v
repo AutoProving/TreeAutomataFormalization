@@ -1,6 +1,4 @@
-Set Warnings "-notation-overridden, -notation-incompatible-format".
 From mathcomp Require Import all_ssreflect.
-Set Warnings "notation-overridden, notation-incompatible-format".
 
 Set Implicit Arguments.
 Unset Strict Implicit.

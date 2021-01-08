@@ -1,5 +1,7 @@
--R . Top
+-R . TreeAutomata
+-arg -w -arg -notation-overridden
+-arg -w -arg -notation-incompatible-format
 
-lib/basic.v
-lib/trees.v
-lib/terms.v
+theories/basic.v
+theories/trees.v
+theories/terms.v
