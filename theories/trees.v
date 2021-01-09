@@ -1,3 +1,7 @@
+(* Copyright (c) 2020 Ana de Almeida Borges and Mateus de Oliveira Oliveira *)
+(* Distributed under the terms of the MIT License. *)
+
+
 From mathcomp Require Import all_ssreflect.
 
 Require Import Wf_nat.
