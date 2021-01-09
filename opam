@@ -1,9 +1,9 @@
 opam-version: "2.0"
-name: "tree-automata-formalization"
+name: "TreeAutomataFormalization"
 maintainer: "Ana de Almeida Borges <ana.agvb@gmail.com>"
 
-homepage: "https://github.com/mateusoliveiraoliveira/TreeAutomataFormalization"
-bug-reports: "https://github.com/mateusoliveiraoliveira/TreeAutomataFormalization/issues"
+homepage: "https://github.com/Autoproving/TreeAutomataFormalization"
+bug-reports: "https://github.com/Autoproving/TreeAutomataFormalization/issues"
 license: "MIT"
 
 build: [ make "-j" "%{jobs}%" ]
@@ -16,7 +16,7 @@ depends: [
 
 tags: [ "keyword:tree" "keyword:tree-automata" ]
 authors: [ "Ana de Almeida Borges <ana.agvb@gmail.com>" ]
-synopsis: "Formalization of Basic Constructions in Tree Automata Theory"
+synopsis: "Formalization of Basic Constructions from Tree Automata Theory in Coq"
 description: """
-Formalization of Basic Constructions in Tree Automata Theory
+Formalization of Basic Constructions from Tree Automata Theory in Coq.
 """
