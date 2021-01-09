@@ -37,3 +37,8 @@ The documentation is generated with CoqdocJS: https://github.com/palmskog/coqdoc
 ## Licence
 
 This project is under the MIT licence. More details can be found in the file LICENSE and at https://mit-license.org/
+
+## Acknowledgements
+
+We acknowledge suport from the Research Council of Norway in the context of the project 
+AUTOPROVING - Automated Theorem Proving From the Mindset of Parameterized Complexity Theory (Proj. Number 288761). 
