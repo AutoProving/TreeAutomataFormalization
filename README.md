@@ -1,4 +1,4 @@
-# Formalization of Tree Automata in Coq
+# Formalization of Some Basic Concepts from Tree Automata in Coq
 
 ## Dependencies
 
